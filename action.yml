@@ -34,9 +34,15 @@ runs:
       run: |
         tfenv install "$(cat .terraform-version)" > /dev/null
         terraform fmt -recursive=true -check=true -diff=true -write=false
-    - name: Terraform Init & Validate
+    - name: Terraform Init
       shell: bash
       working-directory: ${{ inputs.tfpath }}
-      run: |
-        terraform init
-        terraform validate
+      run: terraform init
+    - name: Terraform Validate
+      shell: bash
+      working-directory: ${{ inputs.tfpath }}
+      run: terraform validate
+    - name: Terraform Plan
+      shell: bash
+      working-directory: ${{ inputs.tfpath }}
+      run: terraform plan
