@@ -1,0 +1,42 @@
+name: 'Mozilla Terraform Project CI'
+description: 'Terraform CI for Mozilla SRE Teams'
+inputs:
+  tfpath:
+    description: 'Terraform Project git repository path'
+    required: true
+    default: '.'
+runs:
+  using: "composite"
+  steps:
+    - name: Install TFEnv
+      shell: bash
+      run: |
+        if ! command -v "tfenv" > /dev/null; then
+          git clone https://github.com/tfutils/tfenv.git ~/.tfenv
+          sudo rm /usr/local/bin/tfenv || echo "INFO: No tfenv installed"
+          sudo rm /usr/local/bin/terraform || echo "INFO: No terraform installed"
+          sudo ln -s ~/.tfenv/bin/* /usr/local/bin > /dev/null
+        fi
+    - name: Clone Repository
+      uses: actions/checkout@v2
+    - name: Terraform Install
+      working-directory: ${{ inputs.tfpath }}
+      shell: bash
+      run: |
+        if [ -f .terraform-version ]; then
+          tfenv install "$(cat .terraform-version)" > /dev/null
+        else
+          tfenv install 1.0.0 && tfenv use 1.0.0 > /dev/null
+        fi
+    - name: Terraform Format
+      working-directory: ${{ inputs.tfpath }}
+      shell: bash
+      run: |
+        tfenv install "$(cat .terraform-version)" > /dev/null
+        terraform fmt -recursive=true -check=true -diff=true -write=false
+    - name: Terraform Init & Validate
+      shell: bash
+      working-directory: ${{ inputs.tfpath }}
+      run: |
+        terraform init
+        terraform validate
