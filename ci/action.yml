@@ -64,7 +64,7 @@ runs:
       run: |
         echo "****** CHECK README.MD ******"
 
-        if [[ ! -f .terraform-version ]]; then
+        if [[ ! -f README.md ]]; then
           echo "ERROR: ${{ inputs.tfpath }}/README.md missing."
           exit 1
         fi
