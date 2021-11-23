@@ -117,6 +117,7 @@ runs:
             echo "ERROR: ${{ inputs.tfpath }}/terraform.tf has incorrect terraform.backend.gcs.prefix ${gcs_prefix}."
             exit 1 
           fi
+        fi
     - name: Terraform Format
       working-directory: ${{ inputs.tfpath }}
       shell: bash
