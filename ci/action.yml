@@ -106,25 +106,17 @@ runs:
         echo "****** PROJECT NAME MATCHES terraform.backend.gcs.prefix ******"
 
         if [[ ! -f terraform.tf ]]; then
-          echo "INFO: ${{ inputs.tfpath }}/.terraform.tf not present."
+          echo "INFO: ${{ inputs.tfpath }}/terraform.tf not present."
         else
           directory=$(echo ${{ inputs.tfpath }} | cut -d'/' -f1 -s)
           file_content=$(cat terraform.tf)
           json_content=$(echo $file_content | json2hcl --reverse)
+          gcs_prefix=$(echo $json_content | jq -re '.terraform[].backend[].gcs[].prefix')
 
-          if echo $json_content | jq -re 'has("terraform")' > /dev/null; then
-            if echo $json_content | jq -re '.terraform[] | has("backend")' > /dev/null; then
-              if echo $json_content | jq -re '.terraform[].backend[] | has("gcs")' > /dev/null; then
-                gcs_prefix=$(echo $json_content | jq -re '.terraform[].backend[].gcs[].prefix')
-
-                if [[ "$gcs_prefix" != "projects/${directory}" ]] ; then
-                  echo "ERROR: ${{ inputs.tfpath }}/terraform.tf has incorrect terraform.backend.gcs.prefix ${gcs_prefix}."
-                  exit 1 
-                fi
-              fi
-            fi
+          if [[ "$gcs_prefix" != "projects/${directory}" ]] ; then
+            echo "ERROR: ${{ inputs.tfpath }}/terraform.tf has incorrect terraform.backend.gcs.prefix ${gcs_prefix}."
+            exit 1 
           fi
-        fi
     - name: Terraform Format
       working-directory: ${{ inputs.tfpath }}
       shell: bash
