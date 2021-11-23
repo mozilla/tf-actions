@@ -1,0 +1,96 @@
+name: matrixify
+description: Enumerates changed Terraform subdirs for a matrix
+
+inputs:
+  filter_file:
+    description: "Filepaths to include"
+    required: false
+    default: "*.tf"
+  ignore_dir:
+    description: "Directory to ignore"
+    required: false
+    default: "ignoreme"
+  ignore_path:
+    description: "Filepath to ignore"
+    required: false
+    default: "*.ignore"
+
+outputs:
+  matrix:
+    description: "Resulting matrix of git-altered directories that contain a $filter_file"
+    value: ${{ steps.set-matrix.outputs.matrix }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Clone Repository
+      uses: actions/checkout@v2
+    - name: Check changed files
+      id: diff
+      shell: bash
+      run: |
+        echo "****** CHECK CHANGED FILES ******"
+
+        if [ $GITHUB_BASE_REF ]; then
+          # Pull Request (per branch changes)
+          git fetch origin $GITHUB_BASE_REF --depth=1
+          export DIFF=$( git diff --name-only origin/$GITHUB_BASE_REF $GITHUB_SHA )
+          echo "Diff between origin/$GITHUB_BASE_REF and $GITHUB_SHA"
+        else
+          # Push (per commit changes)
+          git fetch origin ${{ github.event.before }} --depth=1
+          export DIFF=$( git diff --name-only ${{ github.event.before }} $GITHUB_SHA )
+          echo "Diff between ${{ github.event.before }} and $GITHUB_SHA"
+        fi
+
+        echo "$DIFF"
+
+        # Escape newlines (replace \n with %0A)
+        echo "::set-output name=diff::$( echo "$DIFF" | sed ':a;N;$!ba;s/\n/%0A/g' )"
+    - name: Set matrix for build
+      id: set-matrix
+      shell: bash
+      run: |
+        echo "****** SET MATRIX FOR BUILD ******"
+
+        DIFF="${{ steps.diff.outputs.diff }}"
+        JSON="{\"include\":["
+
+        # Loop by lines
+        while read path; do
+          # Set $directory to substring before /
+          rootdir="$( echo $path | cut -d'/' -f1 -s )"
+          directory="$( dirname $path )"
+
+          # filter out root directory
+          # plus any designated dirs or filepaths
+          if [ -z "$rootdir" ]; then
+            continue # Exclude root directory
+          elif [ "$directory" == ${{ inputs.ignore_dir }} ]; then
+            continue
+          elif [ "$path" == ${{ inputs.ignore_path }} ]; then
+            continue
+          fi
+
+          # only include directories containing certain filepaths, e.g. *.tf
+          filecheck=(`find $directory -name ${{ inputs.filter_file }}`)
+          if [ ${#filecheck[@]} == 0 ]; then 
+              continue
+          fi
+
+          # build the JSON used for GHA Matrix jobs
+          JSONline="{\"directory\": \"$directory\", \"os\": \"ubuntu-latest\"},"
+          if [[ "$JSON" != *"$JSONline"* ]]; then
+            JSON="$JSON$JSONline"
+          fi
+        done <<< "$DIFF"
+
+        # Remove last "," and add closing brackets on Matrix JSON
+        if [[ $JSON == *, ]]; then
+          JSON="${JSON%?}"
+        fi
+        JSON="$JSON]}"
+        echo $JSON
+
+        # Set output
+        echo "::set-output name=matrix::$( echo "$JSON" )"
