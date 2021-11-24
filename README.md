@@ -24,6 +24,7 @@ This repository contains GitHub Actions Composite Actions used for Terraform Aut
 The `mozilla/tf-actions/matrixify` action will return a list of directories that contain a versions.tf & where there has been a change in the latest git commit(s). This is useful for running a set of commands in each Terraform root directory under a given project.
 
 Inputs:
+* `default_branch`: The default branch of the repository. Defaults to main. Used for first commit on a new branch diffs.
 * `filter_file`: Files to filter for as a representation of a Terraform module or project direcotry. Defaults to "version.tf".
 * `ignore_dir`: Directories to filter out of the resulting matrix. Defaults to "ignoreme".
 * `ignore_path`: Filepaths to filter out of the resulting matrix. Defaults to "*.ignore".
