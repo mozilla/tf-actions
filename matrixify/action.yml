@@ -33,7 +33,7 @@ runs:
       id: diff
       shell: bash
       run: |
-        echo "****** CHECK CHANGED FILES ******"
+        # "****** CHECK CHANGED FILES ******"
 
         if [ $GITHUB_BASE_REF ]; then
           # Pull Request (per branch changes)
@@ -53,7 +53,11 @@ runs:
           fi
         fi
 
-        echo "$DIFF"
+        if [ -z "$DIFF" ]; then
+          echo "NO GIT CHANGES DETECTED, SKIPPING CI."
+        else
+          echo "DIFF: $DIFF"
+        fi
 
         # Escape newlines (replace \n with %0A)
         echo "::set-output name=diff::$( echo "$DIFF" | sed ':a;N;$!ba;s/\n/%0A/g' )"
@@ -61,46 +65,52 @@ runs:
       id: set-matrix
       shell: bash
       run: |
-        echo "****** SET MATRIX FOR BUILD ******"
+        # "****** SET MATRIX FOR BUILD ******"
 
         DIFF="${{ steps.diff.outputs.diff }}"
-        JSON="{\"include\":["
+        
+        if [ -z "$DIFF" ]; then
+          JSON="{\"include\":["
 
-        # Loop by lines
-        while read path; do
-          # Set $directory to substring before /
-          rootdir="$( echo $path | cut -d'/' -f1 -s )"
-          directory="$( dirname $path )"
+          # Loop by lines
+          while read path; do
+            # Set $directory to substring before /
+            rootdir="$( echo $path | cut -d'/' -f1 -s )"
+            directory="$( dirname $path )"
 
-          # filter out root directory
-          # plus any designated dirs or filepaths
-          if [ -z "$rootdir" ]; then
-            continue # Exclude root directory
-          elif [ "$directory" == ${{ inputs.ignore_dir }} ]; then
-            continue
-          elif [ "$path" == ${{ inputs.ignore_path }} ]; then
-            continue
-          fi
-
-          # only include directories containing certain filepaths, e.g. *.tf
-          filecheck=(`find $directory -name ${{ inputs.filter_file }}`)
-          if [ ${#filecheck[@]} == 0 ]; then 
+            # filter out root directory
+            # plus any designated dirs or filepaths
+            if [ -z "$rootdir" ]; then
+              continue # Exclude root directory
+            elif [ "$directory" == ${{ inputs.ignore_dir }} ]; then
               continue
-          fi
+            elif [ "$path" == ${{ inputs.ignore_path }} ]; then
+              continue
+            fi
 
-          # build the JSON used for GHA Matrix jobs
-          JSONline="{\"directory\": \"$directory\", \"os\": \"ubuntu-latest\"},"
-          if [[ "$JSON" != *"$JSONline"* ]]; then
-            JSON="$JSON$JSONline"
-          fi
-        done <<< "$DIFF"
+            # only include directories containing certain filepaths, e.g. *.tf
+            filecheck=(`find $directory -name ${{ inputs.filter_file }}`)
+            if [ ${#filecheck[@]} == 0 ]; then 
+              continue
+            fi
 
-        # Remove last "," and add closing brackets on Matrix JSON
-        if [[ $JSON == *, ]]; then
-          JSON="${JSON%?}"
+            # build the JSON used for GHA Matrix jobs
+            JSONline="{\"directory\": \"$directory\", \"os\": \"ubuntu-latest\"},"
+            if [[ "$JSON" != *"$JSONline"* ]]; then
+              JSON="$JSON$JSONline"
+            fi
+          done <<< "$DIFF"
+
+          # Remove last "," and add closing brackets on Matrix JSON
+          if [[ $JSON == *, ]]; then
+            JSON="${JSON%?}"
+          fi
+          JSON="$JSON]}"
+          echo $JSON
+
+          # Set output
+          echo "::set-output name=matrix::$( echo "$JSON" )"
+        else
+          JSON="{\"include\":[]}"
+          echo "::set-output name=matrix::$( echo "$JSON" )"
         fi
-        JSON="$JSON]}"
-        echo $JSON
-
-        # Set output
-        echo "::set-output name=matrix::$( echo "$JSON" )"
