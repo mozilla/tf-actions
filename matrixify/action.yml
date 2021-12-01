@@ -69,7 +69,7 @@ runs:
 
         DIFF="${{ steps.diff.outputs.diff }}"
         
-        if [ -z "$DIFF" ]; then
+        if [[ "$DIFF" ]]; then
           JSON="{\"include\":["
 
           # Loop by lines
