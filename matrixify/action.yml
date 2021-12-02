@@ -88,6 +88,12 @@ runs:
               continue
             fi
 
+            # ignore files / directories removed by git commits
+            if [ ! -d $directory ]; then
+              echo "${directory} removed by git changes"
+              continue
+            fi
+
             # only include directories containing certain filepaths, e.g. *.tf
             filecheck=(`find $directory -name ${{ inputs.filter_file }}`)
             if [ ${#filecheck[@]} == 0 ]; then 
