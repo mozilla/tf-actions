@@ -19,7 +19,7 @@ runs:
     - name: Install jq
       shell: bash
       run: |
-        echo "****** INSTALL JQ ******"
+        # "****** INSTALL JQ ******"
 
         if ! command -v "jq" > /dev/null; then
           sudo apt-get update
@@ -28,7 +28,7 @@ runs:
     - name: Install json2hcl
       shell: bash
       run: |
-        echo "****** INSTALL JSON2HCL ******"
+        # "****** INSTALL JSON2HCL ******"
 
         if ! command -v "json2hcl" > /dev/null; then
           curl -SsL https://github.com/kvz/json2hcl/releases/download/v0.0.6/json2hcl_v0.0.6_linux_amd64 | sudo tee /usr/local/bin/json2hcl > /dev/null
@@ -38,7 +38,7 @@ runs:
     - name: Install TFEnv
       shell: bash
       run: |
-        echo "****** INSTALL TFENV ******"
+        # "****** INSTALL TFENV ******"
 
         if ! command -v "tfenv" > /dev/null; then
           git clone https://github.com/tfutils/tfenv.git ~/.tfenv
@@ -50,7 +50,7 @@ runs:
       working-directory: ${{ inputs.tfpath }}
       shell: bash
       run: |
-        echo "****** INSTALL TERRAFORM ******"
+        # "****** INSTALL TERRAFORM ******"
 
         if [ -f .terraform-version ]; then
           tfenv install "$(cat .terraform-version)" > /dev/null
@@ -62,7 +62,7 @@ runs:
       shell: bash
       working-directory: ${{ inputs.tfpath }}
       run: |
-        echo "****** CHECK README.MD ******"
+        # "****** CHECK README.MD ******"
 
         if [[ ! -f README.md ]]; then
           echo "ERROR: ${{ inputs.tfpath }}/README.md missing."
@@ -72,7 +72,7 @@ runs:
       shell: bash
       working-directory: ${{ inputs.tfpath }}
       run: |
-        echo "****** CHECK .terraform-version ******"
+        # "****** CHECK .terraform-version ******"
 
         if [[ ! -f .terraform-version ]]; then
           echo "WARNING: ${{ inputs.tfpath }}/.terraform-version missing."
@@ -81,7 +81,7 @@ runs:
       shell: bash
       working-directory: ${{ inputs.tfpath }}
       run: |
-        echo "****** CHECK .terraform.lock.hcl ******"
+        # "****** CHECK .terraform.lock.hcl ******"
 
         if [[ ! -f .terraform.lock.hcl ]]; then
           echo "WARNING: ${{ inputs.tfpath }}/.terraform.lock.hcl missing."
@@ -90,7 +90,7 @@ runs:
       shell: bash
       working-directory: ${{ inputs.tfpath }}
       run: |
-        echo "****** CHECK terraform.required_version ******"
+        # "****** CHECK terraform.required_version ******"
 
         match="[[:space:]]+terraform[[:space:]]+{[[:space:]]+required_version[[:space:]]+.*"
         file_content=$(cat versions.tf)
@@ -103,7 +103,7 @@ runs:
       shell: bash
       working-directory: ${{ inputs.tfpath }}
       run: |
-        echo "****** PROJECT NAME MATCHES terraform.backend.gcs.prefix ******"
+        # "****** PROJECT NAME MATCHES terraform.backend.gcs.prefix ******"
 
         if [[ ! -f terraform.tf ]]; then
           echo "INFO: ${{ inputs.tfpath }}/terraform.tf not present."
@@ -122,7 +122,7 @@ runs:
       working-directory: ${{ inputs.tfpath }}
       shell: bash
       run: |
-        echo "****** TERRAFORM FORMAT ******"
+        # "****** TERRAFORM FORMAT ******"
 
         tfenv install "$(cat .terraform-version)" > /dev/null
         terraform fmt -recursive=true -check=true -diff=true -write=false
@@ -130,13 +130,13 @@ runs:
       shell: bash
       working-directory: ${{ inputs.tfpath }}
       run: |
-        echo "****** TERRAFORM INIT ******"
+        # "****** TERRAFORM INIT ******"
 
         terraform init --backend=false
     - name: Terraform Validate
       shell: bash
       working-directory: ${{ inputs.tfpath }}
       run: |
-        echo "****** TERRAFORM VALIDATE ******"
+        # "****** TERRAFORM VALIDATE ******"
 
         terraform validate
