@@ -111,11 +111,16 @@ runs:
           directory=$(echo ${{ inputs.tfpath }} | cut -d'/' -f1 -s)
           file_content=$(cat terraform.tf)
           json_content=$(echo $file_content | json2hcl --reverse)
-          gcs_prefix=$(echo $json_content | jq -re '.terraform[].backend[].gcs[].prefix')
+          gcs_backend=$(echo $json_content | jq -re '.terraform[].backend[] | has("gcs")')
 
-          if [[ "$gcs_prefix" != "projects/${directory}" ]] ; then
-            echo "ERROR: ${{ inputs.tfpath }}/terraform.tf has incorrect terraform.backend.gcs.prefix ${gcs_prefix}."
-            exit 1 
+          if $gcs_backend ; then
+            gcs_prefix=$(echo $json_content | jq -re '.terraform[].backend[].gcs[].prefix')
+            if [[ "$gcs_prefix" != "projects/${directory}" ]] ; then
+              echo "ERROR: ${{ inputs.tfpath }}/terraform.tf has incorrect terraform.backend.gcs.prefix ${gcs_prefix}."
+              exit 1 
+            fi
+          else
+            echo "INFO: ${{ inputs.tfpath }}/terraform.tf not using GCS backend."
           fi
         fi
     - name: Terraform Format
