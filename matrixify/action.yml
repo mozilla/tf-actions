@@ -82,9 +82,9 @@ runs:
             # plus any designated dirs or filepaths
             if [ -z "$rootdir" ]; then
               continue # Exclude root directory
-            elif [ "$directory" == ${{ inputs.ignore_dir }} ]; then
+            elif [[ "$directory" == ${{ inputs.ignore_dir }} ]]; then
               continue
-            elif [ "$path" == ${{ inputs.ignore_path }} ]; then
+            elif [[ "$path" == ${{ inputs.ignore_path }} ]]; then
               continue
             fi
 
