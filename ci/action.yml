@@ -128,7 +128,7 @@ runs:
               fi
             else
               echo "INFO: ${{ inputs.tfpath }} is not using Terraform environment subdirectories."
-              if [[ "$gcs_prefix" != "projects/${directory}" ]] ; then
+              if [[ "$gcs_prefix" != "projects/${proj_dir}" ]] ; then
                 echo "ERROR: ${{ inputs.tfpath }}/terraform.tf has incorrect terraform.backend.gcs.prefix ${gcs_prefix}."
                 exit 1 
               fi
