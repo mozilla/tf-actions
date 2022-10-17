@@ -95,10 +95,10 @@ runs:
 
         match="[[:space:]]+terraform[[:space:]]+{[[:space:]]+required_version[[:space:]]+.*"
         file_content=$(cat versions.tf)
-        
+
         if [[ " $file_content " =~ $match ]]; then
           echo "ERROR: ${{ inputs.tfpath }}/versions.tf missing `terraform.required_version`."
-          exit 1 
+          exit 1
         fi
     - name: Project name matches terraform.backend.gcs.prefix
       shell: bash
@@ -111,7 +111,6 @@ runs:
         else
           proj_dir=$(echo ${{ inputs.tfpath }} | cut -d'/' -f1 -s)
           tf_dir=$(echo ${{ inputs.tfpath }} | cut -d'/' -f2 -s)
-          env_dir=$(echo ${{ inputs.tfpath }} | cut -d'/' -f3 -s)
 
           file_content=$(cat terraform.tf)
           json_content=$(echo $file_content | json2hcl --reverse)
@@ -120,18 +119,9 @@ runs:
           if $gcs_backend; then
             gcs_prefix=$(echo $json_content | jq -re ".terraform[].backend[].gcs[].prefix")
 
-            if [ ! -z "${env_dir}" ] ; then
-              echo "INFO: ${{ inputs.tfpath }} is using Terraform environment subdirectories."
-              if [[ "$gcs_prefix" != "projects/${proj_dir}/${env_dir}" ]] ; then
-                echo "ERROR: ${{ inputs.tfpath }}/terraform.tf has incorrect terraform.backend.gcs.prefix ${gcs_prefix}."
-                exit 1 
-              fi
-            else
-              echo "INFO: ${{ inputs.tfpath }} is not using Terraform environment subdirectories."
-              if [[ "$gcs_prefix" != "projects/${proj_dir}" ]] ; then
-                echo "ERROR: ${{ inputs.tfpath }}/terraform.tf has incorrect terraform.backend.gcs.prefix ${gcs_prefix}."
-                exit 1 
-              fi
+            if [[ "$gcs_prefix" != "projects/${proj_dir}" && "$gcs_prefix" != "projects/${proj_dir}"/* ]] ; then
+              echo "ERROR: the terraform.backend.gcs.prefix in ${{ inputs.tfpath }}/terraform.tf doesn't start with projects/${proj_dir}."
+              exit 1
             fi
           else
             echo "INFO: ${{ inputs.tfpath }}/terraform.tf not using GCS backend."
