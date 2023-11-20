@@ -87,7 +87,7 @@ runs:
               continue
             elif [[ "$path" == @(${{ inputs.ignore_path }}) ]]; then
               continue
-            done
+            fi
 
             # ignore files / directories removed by git commits
             if [ ! -d $directory ]; then
