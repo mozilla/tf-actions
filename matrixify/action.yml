@@ -11,11 +11,11 @@ inputs:
     required: false
     default: "*.tf"
   ignore_dir:
-    description: "Directories to ignore (comma-separated)"
+    description: "Directories to ignore (pipe-separated)"
     required: false
     default: "ignoreme"
   ignore_path:
-    description: "Filepaths to ignore (comma-separated)"
+    description: "Filepaths to ignore (pipe-separated)"
     required: false
     default: "*.ignore"
 
@@ -66,6 +66,7 @@ runs:
       shell: bash
       run: |
         # "****** SET MATRIX FOR BUILD ******"
+        shopt -s extglob
 
         DIFF="${{ steps.diff.outputs.diff }}"
         
@@ -79,22 +80,13 @@ runs:
             directory="$( dirname $path )"
 
             # filter out root directory
+            # plus any designated dirs or filepaths
             if [ -z "$rootdir" ]; then
               continue # Exclude root directory
-            fi
-
-            # filter out designated dirs
-            for ignore_dir in $(echo "${{ inputs.ignore_dir }}" | tr "," "\n"); do
-              if [[ "$directory" == $ignore_dir ]]; then
-                continue
-              fi
-            done
-
-            # filter out designated paths
-            for ignore_path in $(echo "${{ inputs.ignore_path }}" | tr "," "\n"); do
-              if [[ "$path" == $ignore_path ]]; then
-                continue
-              fi
+            elif [[ "$directory" == @(${{ inputs.ignore_dir }}) ]]; do
+              continue
+            elif [[ "$path" == @(${{ inputs.ignore_path }}) ]]; do
+              continue
             done
 
             # ignore files / directories removed by git commits
