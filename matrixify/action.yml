@@ -11,11 +11,11 @@ inputs:
     required: false
     default: "*.tf"
   ignore_dir:
-    description: "Directory to ignore"
+    description: "Directories to ignore (pipe-separated)"
     required: false
     default: "ignoreme"
   ignore_path:
-    description: "Filepath to ignore"
+    description: "Filepaths to ignore (pipe-separated)"
     required: false
     default: "*.ignore"
 
@@ -66,6 +66,7 @@ runs:
       shell: bash
       run: |
         # "****** SET MATRIX FOR BUILD ******"
+        shopt -s extglob
 
         DIFF="${{ steps.diff.outputs.diff }}"
         
@@ -82,9 +83,9 @@ runs:
             # plus any designated dirs or filepaths
             if [ -z "$rootdir" ]; then
               continue # Exclude root directory
-            elif [[ "$directory" == ${{ inputs.ignore_dir }} ]]; then
+            elif [[ "$directory" == @(${{ inputs.ignore_dir }}) ]]; then
               continue
-            elif [[ "$path" == ${{ inputs.ignore_path }} ]]; then
+            elif [[ "$path" == @(${{ inputs.ignore_path }}) ]]; then
               continue
             fi
 
