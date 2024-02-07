@@ -11,6 +11,9 @@ inputs:
     required: false
     default: "."
 
+env:
+  DEFAULT_TF_VERSION: "1.4.6"
+
 runs:
   using: "composite"
   steps:
@@ -56,7 +59,7 @@ runs:
         if [ -f .terraform-version ]; then
           tfenv install "$(cat .terraform-version)" > /dev/null
         else
-          tfenv install 1.0.0 && tfenv use 1.0.0 > /dev/null
+          tfenv install ${{ env.DEFAULT_TF_VERSION }} && tfenv use ${{ env.DEFAULT_TF_VERSION }} > /dev/null
         fi
     - name: Check README.md
       if: inputs.readme_check == 'true'
@@ -95,10 +98,10 @@ runs:
 
         match="[[:space:]]+terraform[[:space:]]+{[[:space:]]+required_version[[:space:]]+.*"
         file_content=$(cat versions.tf)
-        
+
         if [[ " $file_content " =~ $match ]]; then
           echo "ERROR: ${{ inputs.tfpath }}/versions.tf missing `terraform.required_version`."
-          exit 1 
+          exit 1
         fi
     - name: Project name matches terraform.backend.gcs.prefix
       shell: bash
@@ -124,13 +127,13 @@ runs:
               echo "INFO: ${{ inputs.tfpath }} is using Terraform environment subdirectories."
               if [[ "$gcs_prefix" != "projects/${proj_dir}/${env_dir}" ]] ; then
                 echo "ERROR: ${{ inputs.tfpath }}/terraform.tf has incorrect terraform.backend.gcs.prefix ${gcs_prefix}."
-                exit 1 
+                exit 1
               fi
             else
               echo "INFO: ${{ inputs.tfpath }} is not using Terraform environment subdirectories."
               if [[ "$gcs_prefix" != "projects/${proj_dir}" ]] ; then
                 echo "ERROR: ${{ inputs.tfpath }}/terraform.tf has incorrect terraform.backend.gcs.prefix ${gcs_prefix}."
-                exit 1 
+                exit 1
               fi
             fi
           else
