@@ -56,7 +56,7 @@ runs:
         if [ -f .terraform-version ]; then
           tfenv install "$(cat .terraform-version)" > /dev/null
         else
-          tfenv install 1.4.6 && tfenv use 1.4.6 > /dev/null
+          tfenv install 1.8.5 && tfenv use 1.8.5 > /dev/null
         fi
     - name: Check README.md
       if: inputs.readme_check == 'true'
