@@ -96,8 +96,9 @@ runs:
             fi
 
             # only include directories containing certain filepaths, e.g. *.tf
-            filecheck=(`find $directory -name ${{ inputs.filter_file }}`)
+            filecheck=(`find $directory -name ${{ inputs.filter_file }} -depth 1`)
             if [ ${#filecheck[@]} == 0 ]; then 
+              echo "${directory} has no files matching ${{ inputs.filter_file }}"
               continue
             fi
 
