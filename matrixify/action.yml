@@ -60,7 +60,7 @@ runs:
         fi
 
         # Escape newlines (replace \n with %0A)
-        echo "::set-output name=diff::$( echo "$DIFF" | sed ':a;N;$!ba;s/\n/%0A/g' )"
+        echo "diff=$( echo "$DIFF" | sed ':a;N;$!ba;s/\n/%0A/g' )" >> $GITHUB_OUTPUT
     - name: Set matrix for build
       id: set-matrix
       shell: bash
@@ -117,8 +117,8 @@ runs:
           echo $JSON
 
           # Set output
-          echo "::set-output name=matrix::$( echo "$JSON" )"
+          echo "matrix=$( echo "$JSON" )" >> $GITHUB_OUTPUT
         else
           JSON="{\"include\":[]}"
-          echo "::set-output name=matrix::$( echo "$JSON" )"
+          echo "matrix=$( echo "$JSON" )" >> $GITHUB_OUTPUT
         fi
