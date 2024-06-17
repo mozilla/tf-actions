@@ -47,6 +47,14 @@ runs:
           sudo rm /usr/local/bin/terraform || echo "INFO: No terraform installed"
           sudo ln -s ~/.tfenv/bin/* /usr/local/bin > /dev/null
         fi
+    - name: Install tflint
+      shell: bash
+        # "****** INSTALL TFLINT ******"
+        if ! command -v "tflint" > /dev/null; then
+          curl -SsL https://github.com/terraform-linters/tflint/releases/download/v0.51.1/tflint_linux_amd64.zip | funzip | sudo tee /usr/local/bin/tflint > /dev/null
+          sudo chmod 755 /usr/local/bin/tflint
+          tflint --version
+        fi
     - name: Terraform Install
       working-directory: ${{ inputs.tfpath }}
       shell: bash
@@ -159,3 +167,13 @@ runs:
         # "****** TERRAFORM VALIDATE ******"
 
         terraform validate
+    - name: Terraform Lint
+      shell: bash
+      working-directory: ${{ inputs.tfpath }}
+      run: |
+        # "****** TERRAFORM LINT ******"
+        if [[ -f .tflint.hcl ]]; then
+          echo "INFO: Running tflint for ${{ inputs.tfpath }}"
+          tflint --init
+          tflint -f compact
+        fi
