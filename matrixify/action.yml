@@ -57,7 +57,7 @@ runs:
           echo "# No git changes detected, skipping CI" >> $GITHUB_STEP_SUMMARY
         else
           echo "# Git changes detected" >> $GITHUB_STEP_SUMMARY
-          echo $DIFF >> $GITHUB_STEP_SUMMARY
+          echo "$DIFF" >> $GITHUB_STEP_SUMMARY
         fi
 
         echo 'diff<<EOF' >> $GITHUB_OUTPUT
@@ -118,7 +118,7 @@ runs:
           JSON="$JSON]}"
 
           echo "# Matrix set" >> $GITHUB_STEP_SUMMARY
-          echo $JSON >> $GITHUB_STEP_SUMMARY
+          echo "$JSON" >> $GITHUB_STEP_SUMMARY
 
           # Set output
           echo "matrix=$( echo "$JSON" )" >> $GITHUB_OUTPUT
