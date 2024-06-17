@@ -54,9 +54,10 @@ runs:
         fi
 
         if [ -z "$DIFF" ]; then
-          echo "NO GIT CHANGES DETECTED, SKIPPING CI."
+          echo "# No git changes detected, skipping CI" >> $GITHUB_STEP_SUMMARY
         else
-          echo "DIFF: $DIFF"
+          echo "# Git changes detected" >> $GITHUB_STEP_SUMMARY
+          echo $DIFF >> $GITHUB_STEP_SUMMARY
         fi
 
         # Escape newlines (replace \n with %0A)
@@ -114,11 +115,14 @@ runs:
             JSON="${JSON%?}"
           fi
           JSON="$JSON]}"
-          echo $JSON
+
+          echo "# Matrix set" >> $GITHUB_STEP_SUMMARY
+          echo $JSON >> $GITHUB_STEP_SUMMARY
 
           # Set output
           echo "matrix=$( echo "$JSON" )" >> $GITHUB_OUTPUT
         else
+          echo "# No matrix set" >> $GITHUB_STEP_SUMMARY
           JSON="{\"include\":[]}"
           echo "matrix=$( echo "$JSON" )" >> $GITHUB_OUTPUT
         fi
