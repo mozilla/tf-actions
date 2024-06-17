@@ -61,7 +61,7 @@ runs:
         fi
 
         echo 'diff<<EOF' >> $GITHUB_OUTPUT
-        echo $DIFF >> $GITHUB_OUTPUT
+        echo "$DIFF" >> $GITHUB_OUTPUT
         echo 'EOF' >> $GITHUB_OUTPUT
     - name: Set matrix for build
       id: set-matrix
