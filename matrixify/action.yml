@@ -60,8 +60,9 @@ runs:
           echo $DIFF >> $GITHUB_STEP_SUMMARY
         fi
 
-        # Escape newlines (replace \n with %0A)
-        echo "diff=$( echo "$DIFF" | sed ':a;N;$!ba;s/\n/%0A/g' )" >> $GITHUB_OUTPUT
+        echo 'diff<<EOF' >> $GITHUB_OUTPUT
+        echo $DIFF >> $GITHUB_OUTPUT
+        echo 'EOF' >> $GITHUB_OUTPUT
     - name: Set matrix for build
       id: set-matrix
       shell: bash
