@@ -49,6 +49,7 @@ runs:
         fi
     - name: Install tflint
       shell: bash
+      run: |
         # "****** INSTALL TFLINT ******"
         if ! command -v "tflint" > /dev/null; then
           curl -SsL https://github.com/terraform-linters/tflint/releases/download/v0.51.1/tflint_linux_amd64.zip | funzip | sudo tee /usr/local/bin/tflint > /dev/null
