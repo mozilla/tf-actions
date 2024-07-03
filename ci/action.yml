@@ -178,3 +178,11 @@ runs:
           tflint --init
           tflint -f compact
         fi
+    - name: Terraform Lint Global
+      shell: bash
+      run: |
+        if [[ -f .tflint.hcl ]]; then
+          echo "INFO: Running tflint for global ruleset"
+          tflint --init
+          TFLINT_OPA_POLICY_DIR=$(pwd)/.tflint.d/policies tflint --config=$(pwd)/.tflint.hcl --chdir ${{ inputs.tfpath }}
+        fi
