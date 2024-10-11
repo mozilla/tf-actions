@@ -118,29 +118,19 @@ runs:
         if [[ ! -f terraform.tf ]]; then
           echo "INFO: ${{ inputs.tfpath }}/terraform.tf not present."
         else
-          proj_dir=$(echo ${{ inputs.tfpath }} | cut -d'/' -f1 -s)
-          tf_dir=$(echo ${{ inputs.tfpath }} | cut -d'/' -f2 -s)
-          env_dir=$(echo ${{ inputs.tfpath }} | cut -d'/' -f3 -s)
-
           file_content=$(cat terraform.tf)
           json_content=$(echo $file_content | json2hcl --reverse)
           gcs_backend=$(echo $json_content | jq ".terraform[].backend[] | has(\"gcs\")")
 
           if $gcs_backend; then
+            tf_path="${{ inputs.tfpath }}"
+            # Use bash substring replacement to remove "tf/"
+            desired_gcs_path="projects/${tf_path/tf\/}"
             gcs_prefix=$(echo $json_content | jq -re ".terraform[].backend[].gcs[].prefix")
 
-            if [ ! -z "${env_dir}" ] ; then
-              echo "INFO: ${{ inputs.tfpath }} is using Terraform environment subdirectories."
-              if [[ "$gcs_prefix" != "projects/${proj_dir}/${env_dir}" ]] ; then
-                echo "ERROR: ${{ inputs.tfpath }}/terraform.tf has incorrect terraform.backend.gcs.prefix ${gcs_prefix}."
-                exit 1
-              fi
-            else
-              echo "INFO: ${{ inputs.tfpath }} is not using Terraform environment subdirectories."
-              if [[ "$gcs_prefix" != "projects/${proj_dir}" ]] ; then
-                echo "ERROR: ${{ inputs.tfpath }}/terraform.tf has incorrect terraform.backend.gcs.prefix ${gcs_prefix}."
-                exit 1
-              fi
+            if [ "${desired_gcs_path}" != "${gcs_prefix}" ]
+              echo "ERROR: ${{ inputs.tfpath }}/terraform.tf has incorrect terraform.backend.gcs.prefix ${gcs_prefix}. Should be ${desired_gcs_path}"
+              exit 1
             fi
           else
             echo "INFO: ${{ inputs.tfpath }}/terraform.tf not using GCS backend."
