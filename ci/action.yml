@@ -125,7 +125,7 @@ runs:
           if $gcs_backend; then
             tf_path="${{ inputs.tfpath }}"
             # Use bash substring replacement to remove "/tf"
-            desired_gcs_path="projects/${tf_path%\/tf}"
+            desired_gcs_path="projects/${tf_path/\/tf}"
             gcs_prefix=$(echo $json_content | jq -re ".terraform[].backend[].gcs[].prefix")
 
             if [ "${desired_gcs_path}" != "${gcs_prefix}" ]; then
