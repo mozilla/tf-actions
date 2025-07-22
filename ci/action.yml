@@ -47,6 +47,11 @@ runs:
           sudo rm /usr/local/bin/terraform || echo "INFO: No terraform installed"
           sudo ln -s ~/.tfenv/bin/* /usr/local/bin > /dev/null
         fi
+    - uses: actions/cache@v4
+      name: Cache plugin dir
+      with:
+        path: ~/.tflint.d/plugins
+        key: ${{ runner.os }}-tflint-${{ hashFiles('.tflint.hcl') }}
     - name: Install tflint
       shell: bash
       run: |
@@ -159,6 +164,9 @@ runs:
 
         terraform validate
     - name: Terraform Lint
+      env:
+        # https://github.com/terraform-linters/tflint/blob/master/docs/user-guide/plugins.md#avoiding-rate-limiting
+        GITHUB_TOKEN: ${{ github.token }}
       shell: bash
       working-directory: ${{ inputs.tfpath }}
       run: |
@@ -169,6 +177,9 @@ runs:
           tflint -f compact
         fi
     - name: Terraform Lint Global
+      env:
+        # https://github.com/terraform-linters/tflint/blob/master/docs/user-guide/plugins.md#avoiding-rate-limiting
+        GITHUB_TOKEN: ${{ github.token }}
       shell: bash
       run: |
         if [[ -f .tflint.hcl ]]; then
