@@ -159,6 +159,9 @@ runs:
 
         terraform validate
     - name: Terraform Lint
+      env:
+        # https://github.com/terraform-linters/tflint/blob/master/docs/user-guide/plugins.md#avoiding-rate-limiting
+        GITHUB_TOKEN: ${{ github.token }}
       shell: bash
       working-directory: ${{ inputs.tfpath }}
       run: |
@@ -169,6 +172,9 @@ runs:
           tflint -f compact
         fi
     - name: Terraform Lint Global
+      env:
+        # https://github.com/terraform-linters/tflint/blob/master/docs/user-guide/plugins.md#avoiding-rate-limiting
+        GITHUB_TOKEN: ${{ github.token }}
       shell: bash
       run: |
         if [[ -f .tflint.hcl ]]; then
