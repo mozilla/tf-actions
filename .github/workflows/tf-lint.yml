@@ -1,0 +1,78 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at https://mozilla.org/MPL/2.0/.
+
+# Reusable workflow to run Terraform linting and validation
+
+name: Terraform CI
+
+on:
+  workflow_call:
+    inputs:
+      ignore_dir:
+        description: 'Directories to ignore (e.g. "**/example**" or "**/example**|**/tf")'
+        type: string
+        required: false
+        default: ""
+
+env:
+  TERRAFORM_VERSION: "1.8.5"
+
+jobs:
+  matrixify:
+    name: Matrixify
+    outputs:
+      matrix: ${{ steps.search.outputs.matrix }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+      - name: Get Changed TF directories (with ignore_dir)
+        if: ${{ inputs.ignore_dir != '' }}
+        id: search_with_ignore
+        uses: mozilla/tf-actions/matrixify@main
+        with:
+          filter_file: "*.tf"
+          ignore_dir: ${{ inputs.ignore_dir }}
+      - name: Get Changed TF directories (no ignore_dir)
+        if: ${{ inputs.ignore_dir == '' }}
+        id: search_no_ignore
+        uses: mozilla/tf-actions/matrixify@main
+        with:
+          filter_file: "*.tf"
+      - name: Set output
+        id: search
+        run: |
+          if [ -n "${{ inputs.ignore_dir }}" ]; then
+            echo "matrix=${{ steps.search_with_ignore.outputs.matrix }}" >> $GITHUB_OUTPUT
+          else
+            echo "matrix=${{ steps.search_no_ignore.outputs.matrix }}" >> $GITHUB_OUTPUT
+          fi
+      - name: Outputs
+        run: echo "${{ steps.search.outputs.matrix }}"
+
+  terraform-ci:
+    name: TF CI on "${{ matrix.directory }}"
+
+    if: ${{ fromJSON(needs.matrixify.outputs.matrix).include[0] }}
+    needs: matrixify
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix: ${{fromJson(needs.matrixify.outputs.matrix)}}
+
+    steps:
+      - name: Install terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+      - id: terraform-checks
+        name: Terraform Checks
+        uses: mozilla/tf-actions/ci@main
+        with:
+          tfpath: ${{ matrix.directory }}
