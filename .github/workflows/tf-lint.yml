@@ -22,7 +22,7 @@ jobs:
   matrixify:
     name: Matrixify
     outputs:
-      matrix: ${{ steps.search.outputs.matrix }}
+      matrix: ${{ inputs.ignore_dir != '' && steps.search_with_ignore.outputs.matrix || steps.search_no_ignore.outputs.matrix }}
     runs-on: ubuntu-latest
 
     steps:
