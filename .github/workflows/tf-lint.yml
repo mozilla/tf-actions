@@ -16,7 +16,7 @@ on:
         default: ""
 
 env:
-  TERRAFORM_VERSION: "1.8.5"
+  TERRAFORM_VERSION: "1.14.4"
 
 jobs:
   matrixify:
