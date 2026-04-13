@@ -36,17 +36,6 @@ runs:
           sudo chmod 755 /usr/local/bin/json2hcl
           json2hcl -version
         fi
-    - name: Install TFEnv
-      shell: bash
-      run: |
-        # "****** INSTALL TFENV ******"
-
-        if ! command -v "tfenv" > /dev/null; then
-          git clone https://github.com/tfutils/tfenv.git ~/.tfenv
-          sudo rm /usr/local/bin/tfenv || echo "INFO: No tfenv installed"
-          sudo rm /usr/local/bin/terraform || echo "INFO: No terraform installed"
-          sudo ln -s ~/.tfenv/bin/* /usr/local/bin > /dev/null
-        fi
     - uses: actions/cache@v4
       name: Cache plugin dir
       with:
@@ -61,17 +50,12 @@ runs:
           sudo chmod 755 /usr/local/bin/tflint
           tflint --version
         fi
-    - name: Terraform Install
-      working-directory: ${{ inputs.tfpath }}
-      shell: bash
-      run: |
-        # "****** INSTALL TERRAFORM ******"
-
-        if [ -f .terraform-version ]; then
-          tfenv install "$(cat .terraform-version)" > /dev/null
-        else
-          tfenv install 1.8.5 && tfenv use 1.8.5 > /dev/null
-        fi
+    - name: Install Opentofu
+      uses: opentofu/setup-opentofu@fc711fa910b93cba0f3fbecaafc9f42fd0c411cb #v2.0.0
+      with:
+        cache: true
+        tofu_wrapper: false
+        tofu_version: ${{ env.OPENTOFU_VERSION }}
     - name: Check README.md
       if: inputs.readme_check == 'true'
       shell: bash
@@ -147,22 +131,21 @@ runs:
       run: |
         # "****** TERRAFORM FORMAT ******"
 
-        tfenv install "$(cat .terraform-version)" > /dev/null
-        terraform fmt -recursive=true -check=true -diff=true -write=false
+        tofu fmt -recursive=true -check=true -diff=true -write=false
     - name: Terraform Init
       shell: bash
       working-directory: ${{ inputs.tfpath }}
       run: |
         # "****** TERRAFORM INIT ******"
 
-        terraform init --backend=false
+        tofu init -backend=false
     - name: Terraform Validate
       shell: bash
       working-directory: ${{ inputs.tfpath }}
       run: |
         # "****** TERRAFORM VALIDATE ******"
 
-        terraform validate
+        tofu validate
     - name: Terraform Lint
       env:
         # https://github.com/terraform-linters/tflint/blob/master/docs/user-guide/plugins.md#avoiding-rate-limiting
