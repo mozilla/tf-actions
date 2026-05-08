@@ -128,6 +128,9 @@ runs:
     - name: Terraform Format
       working-directory: ${{ inputs.tfpath }}
       shell: bash
+      env:
+        # Set PEM so the Github provider doesn't error
+        GITHUB_APP_PEM_FILE: " "
       run: |
         # "****** TERRAFORM FORMAT ******"
 
