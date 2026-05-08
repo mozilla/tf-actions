@@ -16,7 +16,8 @@ on:
         default: ""
 
 env:
-  TERRAFORM_VERSION: "1.14.4"
+  # Keep this synchronized with https://github.com/mozilla/global-platform-admin/blob/main/spacelift/tf/root/locals.tf#L4
+  OPENTOFU_VERSION: "1.11.4"
 
 jobs:
   matrixify:
@@ -26,11 +27,6 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_wrapper: false
-          terraform_version: ${{ env.TERRAFORM_VERSION }}
       - name: Get Changed TF directories (with ignore_dir)
         if: ${{ inputs.ignore_dir != '' }}
         id: search_with_ignore
@@ -66,11 +62,12 @@ jobs:
       matrix: ${{fromJson(needs.matrixify.outputs.matrix)}}
 
     steps:
-      - name: Install terraform
-        uses: hashicorp/setup-terraform@v3
+      - name: Install Opentofu
+        uses: opentofu/setup-opentofu@fc711fa910b93cba0f3fbecaafc9f42fd0c411cb #v2.0.0
         with:
-          terraform_wrapper: false
-          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          cache: true
+          tofu_wrapper: false
+          tofu_version: ${{ env.OPENTOFU_VERSION }}
       - id: terraform-checks
         name: Terraform Checks
         uses: mozilla/tf-actions/ci@main
