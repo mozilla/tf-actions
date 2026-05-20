@@ -67,15 +67,6 @@ runs:
           echo "ERROR: ${{ inputs.tfpath }}/README.md missing."
           exit 1
         fi
-    - name: Check .terraform-version
-      shell: bash
-      working-directory: ${{ inputs.tfpath }}
-      run: |
-        # "****** CHECK .terraform-version ******"
-
-        if [[ ! -f .terraform-version ]]; then
-          echo "WARNING: ${{ inputs.tfpath }}/.terraform-version missing."
-        fi
     - name: Check .terraform.lock.hcl
       shell: bash
       working-directory: ${{ inputs.tfpath }}
@@ -92,10 +83,11 @@ runs:
         # "****** CHECK terraform.required_version ******"
 
         match="[[:space:]]+terraform[[:space:]]+{[[:space:]]+required_version[[:space:]]+.*"
-        file_content=$(cat versions.tf)
+        file_content=$(cat versions.tf) || echo "INFO: ${{ inputs.tfpath }}/versions.tf not found, skipping required_version check" && exit 0
 
+        # Terraform versions are managed by Spacelift & Atlantis, do not set terraform.required_version
         if [[ " $file_content " =~ $match ]]; then
-          echo "ERROR: ${{ inputs.tfpath }}/versions.tf missing `terraform.required_version`."
+          echo "ERROR: ${{ inputs.tfpath }}/versions.tf has `terraform.required_version`. required_version should not be set"
           exit 1
         fi
     - name: Project name matches terraform.backend.gcs.prefix
