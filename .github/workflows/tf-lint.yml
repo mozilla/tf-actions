@@ -17,7 +17,7 @@ on:
 
 env:
   # Keep this synchronized with https://github.com/mozilla/global-platform-admin/blob/main/spacelift/tf/root/locals.tf#L4
-  OPENTOFU_VERSION: "1.11.4"
+  OPENTOFU_VERSION: "1.12.1"
 
 jobs:
   matrixify:
