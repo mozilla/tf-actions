@@ -81,11 +81,7 @@ runs:
       working-directory: ${{ inputs.tfpath }}
       run: |
         # "****** CHECK terraform.required_version not set ******"
-
-        match="[[:space:]]+terraform[[:space:]]+{[[:space:]]+required_version[[:space:]]+.*"
-        file_content=$(cat versions.tf)
-
-        if [[ "$file_content" =~ $match ]]; then
+        if grep "required_version" versions.tf 
           echo "ERROR: ${{ inputs.tfpath }}/versions.tf has `terraform.required_version`, which should not be set"
           exit 1
         fi
