@@ -70,6 +70,6 @@ jobs:
           tofu_version: ${{ env.OPENTOFU_VERSION }}
       - id: terraform-checks
         name: Terraform Checks
-        uses: mozilla/tf-actions/ci@main
+        uses: mozilla/tf-actions/ci@6974df5fc32a357fd732489bbefa21528c4cb4f8
         with:
           tfpath: ${{ matrix.directory }}
