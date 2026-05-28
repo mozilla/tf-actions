@@ -82,7 +82,7 @@ runs:
       run: |
         # "****** CHECK terraform.required_version not set ******"
         if grep "required_version" versions.tf; then
-          echo "ERROR: ${{ inputs.tfpath }}/versions.tf has `terraform.required_version`, which should not be set"
+          echo "ERROR: ${{ inputs.tfpath }}/versions.tf has 'terraform.required_version', which should not be set"
           exit 1
         fi
     - name: Project name matches terraform.backend.gcs.prefix
