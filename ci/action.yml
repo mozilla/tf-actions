@@ -91,7 +91,12 @@ runs:
       run: |
         # "****** PROJECT NAME MATCHES terraform.backend.gcs.prefix ******"
 
-        if [[ ! -f terraform.tf ]]; then
+        tf_path="${{ inputs.tfpath }}"
+
+        # global-platform-admin/projects/** is a special case that doesn't follow our GCS conventions. See MZCLD-3579
+        if [[ "$GITHUB_REPOSITORY" == "mozilla/global-platform-admin" && "$tf_path" == "projects/tf/*" ]]; then
+          echo "INFO: Skipping GCS prefix check for global-platform-admin/projects/**"
+        elif [[ ! -f terraform.tf ]]; then
           echo "INFO: ${{ inputs.tfpath }}/terraform.tf not present."
         else
           file_content=$(cat terraform.tf)
@@ -99,7 +104,6 @@ runs:
           gcs_backend=$(echo $json_content | jq ".terraform[].backend[] | has(\"gcs\")")
 
           if $gcs_backend; then
-            tf_path="${{ inputs.tfpath }}"
             # Use bash substring replacement to remove "/tf"
             desired_gcs_path="projects/${tf_path/\/tf}"
             gcs_prefix=$(echo $json_content | jq -re ".terraform[].backend[].gcs[].prefix")
