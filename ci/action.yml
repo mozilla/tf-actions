@@ -94,7 +94,7 @@ runs:
         tf_path="${{ inputs.tfpath }}"
 
         # global-platform-admin/projects/** is a special case that doesn't follow our GCS conventions. See MZCLD-3579
-        if [[ "$GITHUB_REPOSITORY" == "mozilla/global-platform-admin" && "$tf_path" == "projects/tf/*" ]]; then
+        if [[ "$GITHUB_REPOSITORY" == "mozilla/global-platform-admin" ]] && [[ "$tf_path" == "projects/tf/*" ]]; then
           echo "INFO: Skipping GCS prefix check for global-platform-admin/projects/**"
         elif [[ ! -f terraform.tf ]]; then
           echo "INFO: ${{ inputs.tfpath }}/terraform.tf not present."
