@@ -42,14 +42,20 @@ jobs:
           filter_file: "*.tf"
       - name: Set output
         id: search
+        env:
+          IGNORE_DIR: ${{ inputs.ignore_dir }}
+          MATRIX_WITH_IGNORE: ${{ steps.search_with_ignore.outputs.matrix }}
+          MATRIX_NO_IGNORE: ${{ steps.search_no_ignore.outputs.matrix }}
         run: |
-          if [ -n "${{ inputs.ignore_dir }}" ]; then
-            echo "matrix=${{ steps.search_with_ignore.outputs.matrix }}" >> $GITHUB_OUTPUT
+          if [ -n "$IGNORE_DIR" ]; then
+            echo "matrix=$MATRIX_WITH_IGNORE" >> $GITHUB_OUTPUT
           else
-            echo "matrix=${{ steps.search_no_ignore.outputs.matrix }}" >> $GITHUB_OUTPUT
+            echo "matrix=$MATRIX_NO_IGNORE" >> $GITHUB_OUTPUT
           fi
       - name: Outputs
-        run: echo "${{ steps.search.outputs.matrix }}"
+        env:
+          MATRIX: ${{ steps.search.outputs.matrix }}
+        run: echo "$MATRIX"
 
   terraform-ci:
     name: TF CI on "${{ matrix.directory }}"

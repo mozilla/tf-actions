@@ -15,7 +15,11 @@ runs:
   using: "composite"
   steps:
     - name: Clone Repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      with:
+        # Nothing after this step runs a git operation, so the checkout
+        # credentials do not need to outlive it.
+        persist-credentials: false
     - name: Install jq
       shell: bash
       run: |
@@ -36,7 +40,7 @@ runs:
           sudo chmod 755 /usr/local/bin/json2hcl
           json2hcl -version
         fi
-    - uses: actions/cache@v4
+    - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
       name: Cache plugin dir
       with:
         path: ~/.tflint.d/plugins
@@ -60,44 +64,52 @@ runs:
       if: inputs.readme_check == 'true'
       shell: bash
       working-directory: ${{ inputs.tfpath }}
+      env:
+        TFPATH: ${{ inputs.tfpath }}
       run: |
         # "****** CHECK README.MD ******"
 
         if [[ ! -f README.md ]]; then
-          echo "ERROR: ${{ inputs.tfpath }}/README.md missing."
+          echo "ERROR: ${TFPATH}/README.md missing."
           exit 1
         fi
     - name: Check .terraform.lock.hcl
       shell: bash
       working-directory: ${{ inputs.tfpath }}
+      env:
+        TFPATH: ${{ inputs.tfpath }}
       run: |
         # "****** CHECK .terraform.lock.hcl ******"
 
         if [[ ! -f .terraform.lock.hcl ]]; then
-          echo "WARNING: ${{ inputs.tfpath }}/.terraform.lock.hcl missing."
+          echo "WARNING: ${TFPATH}/.terraform.lock.hcl missing."
         fi
     - name: Check terraform.required_version not set
       shell: bash
       working-directory: ${{ inputs.tfpath }}
+      env:
+        TFPATH: ${{ inputs.tfpath }}
       run: |
         # "****** CHECK terraform.required_version not set ******"
         if grep "required_version" versions.tf; then
-          echo "ERROR: ${{ inputs.tfpath }}/versions.tf has 'terraform.required_version', which should not be set"
+          echo "ERROR: ${TFPATH}/versions.tf has 'terraform.required_version', which should not be set"
           exit 1
         fi
     - name: Project name matches terraform.backend.gcs.prefix
       shell: bash
       working-directory: ${{ inputs.tfpath }}
+      env:
+        TFPATH: ${{ inputs.tfpath }}
       run: |
         # "****** PROJECT NAME MATCHES terraform.backend.gcs.prefix ******"
 
-        tf_path="${{ inputs.tfpath }}"
+        tf_path="$TFPATH"
 
         # global-platform-admin/projects/** is a special case that doesn't follow our GCS conventions. See MZCLD-3579
         if [[ "$GITHUB_REPOSITORY" == "mozilla/global-platform-admin" && "$tf_path" == projects/tf/* ]]; then
           echo "INFO: Skipping GCS prefix check for global-platform-admin/projects/**"
         elif [[ ! -f terraform.tf ]]; then
-          echo "INFO: ${{ inputs.tfpath }}/terraform.tf not present."
+          echo "INFO: ${TFPATH}/terraform.tf not present."
         else
           file_content=$(cat terraform.tf)
           json_content=$(echo $file_content | json2hcl --reverse)
@@ -109,11 +121,11 @@ runs:
             gcs_prefix=$(echo $json_content | jq -re ".terraform[].backend[].gcs[].prefix")
 
             if [ "${desired_gcs_path}" != "${gcs_prefix}" ]; then
-              echo "ERROR: ${{ inputs.tfpath }}/terraform.tf has incorrect terraform.backend.gcs.prefix ${gcs_prefix}. Should be ${desired_gcs_path}"
+              echo "ERROR: ${TFPATH}/terraform.tf has incorrect terraform.backend.gcs.prefix ${gcs_prefix}. Should be ${desired_gcs_path}"
               exit 1
             fi
           else
-            echo "INFO: ${{ inputs.tfpath }}/terraform.tf not using GCS backend."
+            echo "INFO: ${TFPATH}/terraform.tf not using GCS backend."
           fi
         fi
     - name: Terraform Format
@@ -147,12 +159,13 @@ runs:
       env:
         # https://github.com/terraform-linters/tflint/blob/master/docs/user-guide/plugins.md#avoiding-rate-limiting
         GITHUB_TOKEN: ${{ github.token }}
+        TFPATH: ${{ inputs.tfpath }}
       shell: bash
       working-directory: ${{ inputs.tfpath }}
       run: |
         # "****** TERRAFORM LINT ******"
         if [[ -f .tflint.hcl ]]; then
-          echo "INFO: Running tflint for ${{ inputs.tfpath }}"
+          echo "INFO: Running tflint for ${TFPATH}"
           tflint --init
           tflint -f compact
         fi
@@ -160,10 +173,11 @@ runs:
       env:
         # https://github.com/terraform-linters/tflint/blob/master/docs/user-guide/plugins.md#avoiding-rate-limiting
         GITHUB_TOKEN: ${{ github.token }}
+        TFPATH: ${{ inputs.tfpath }}
       shell: bash
       run: |
         if [[ -f .tflint.hcl ]]; then
           echo "INFO: Running tflint for global ruleset"
           tflint --init
-          TFLINT_OPA_POLICY_DIR=$(pwd)/.tflint.d/policies tflint --config=$(pwd)/.tflint.hcl --chdir ${{ inputs.tfpath }}
+          TFLINT_OPA_POLICY_DIR=$(pwd)/.tflint.d/policies tflint --config=$(pwd)/.tflint.hcl --chdir "$TFPATH"
         fi
