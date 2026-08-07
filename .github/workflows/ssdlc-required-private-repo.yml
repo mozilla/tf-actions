@@ -1,0 +1,46 @@
+# TEMPORARY TEST COPY -- DO NOT MERGE TO main, DO NOT COPY INTO OTHER REPOS.
+#
+# This branch exists only to host the file below while
+# https://github.com/mozilla/ssdlc-actions/pull/<N> is in review. An org ruleset
+# can only reference a workflow in a repo in the same org, so the entrypoint
+# cannot be sourced from a personal fork -- tf-actions is standing in as a
+# same-org, public host. The org ruleset that consumes it is defined in
+# global-platform-admin at github/tf/mozilla/ssdlc.tf.
+#
+# Delete this branch once the upstream PR merges and the ruleset is repointed at
+# mozilla/ssdlc-actions. Everything below this banner is identical to the
+# upstream PR.
+# -----------------------------------------------------------------------------
+# Standalone entrypoint for code security analysis on private and internal
+# repos, intended for use as a required workflow in an organization ruleset:
+#   https://docs.github.com/en/enterprise-cloud@latest/organizations/managing-organization-settings/creating-rulesets-for-repositories-in-your-organization
+#
+# Consuming repos do NOT copy this file. An org ruleset points at it by path,
+# and GitHub runs it against every in-scope repo on pull requests. Use
+# `workflow-templates/ssdlc-actions-private-repo.yml` instead if you want a
+# per-repo workflow file.
+#
+# Notes for maintainers:
+#   - `pull_request` and/or `merge_group` is mandatory. Required workflows
+#     cannot be `workflow_call`, which is why this wrapper exists alongside
+#     `code-security-analysis-private-repo.yml`.
+#   - Branch/path filters are ignored by the required-workflow runner, so none
+#     are set here.
+#   - The `uses:` below must be the full `owner/repo@ref` form. A required
+#     workflow is fetched from this repo but executes in the *target* repo's
+#     context, so a relative `./.github/workflows/...` path would resolve
+#     against the repo being scanned and fail to find the file.
+name: SSDLC Code Security Analysis
+
+on:
+  pull_request:
+  merge_group:
+
+permissions: {}
+
+jobs:
+  code-security-analysis:
+    permissions:
+      contents: read
+      actions: read
+    uses: mozilla/ssdlc-actions/.github/workflows/code-security-analysis-private-repo.yml@aa759c845c83060e2473fd8df60f9f408e34675d # v1.2
