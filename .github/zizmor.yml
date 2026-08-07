@@ -1,0 +1,25 @@
+# zizmor configuration -- https://docs.zizmor.sh/configuration/
+#
+# Since zizmor v1.20.0 the default unpinned-uses policy requires SHA pinning for
+# every action, including first-party ones. That default is right for third-party
+# actions, but it cannot work for the self-references in
+# .github/workflows/tf-lint.yml, which point at mozilla/tf-actions/{ci,matrixify}
+# in this same repository:
+#
+#   - Consumers call tf-lint.yml at @main and expect the actions it invokes to be
+#     the matching revision. A SHA pin would freeze them at whatever commit was
+#     current when the pin was last bumped.
+#   - A commit cannot contain its own SHA, so every change to ci/ or matrixify/
+#     would need a second follow-up commit to update the pin.
+#
+# ref-pin still requires an explicit ref (@main rather than nothing at all), and
+# the referenced code lives in this repository under the same review and ruleset
+# controls, so there is no third-party trust boundary being crossed.
+#
+# Everything else keeps the strict hash-pin default.
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        mozilla/tf-actions/*: ref-pin
+        "*": hash-pin
