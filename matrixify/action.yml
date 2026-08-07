@@ -28,10 +28,16 @@ runs:
   using: "composite"
   steps:
     - name: Clone Repository
-      uses: actions/checkout@v4
+      # zizmor: ignore[artipacked] the next step runs `git fetch origin`, which
+      # needs the checkout credentials to survive; consumers of this action are
+      # private and internal repos, where an unauthenticated fetch fails.
+      uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
     - name: Check changed files
       id: diff
       shell: bash
+      env:
+        DEFAULT_BRANCH: ${{ inputs.default_branch }}
+        EVENT_BEFORE: ${{ github.event.before }}
       run: |
         # "****** CHECK CHANGED FILES ******"
 
@@ -42,14 +48,14 @@ runs:
           echo "Diff between origin/$GITHUB_BASE_REF and $GITHUB_SHA"
         else
           # Push (per commit changes)
-          if [ "${{ github.event.before }}" == "0000000000000000000000000000000000000000" ]; then
-            git fetch origin ${{ inputs.default_branch }} --depth=1
-            export DIFF=$( git diff --name-only origin/${{ inputs.default_branch }} $GITHUB_SHA )
-            echo "Diff between origin/${{ inputs.default_branch }} and $GITHUB_SHA"
+          if [ "$EVENT_BEFORE" == "0000000000000000000000000000000000000000" ]; then
+            git fetch origin "$DEFAULT_BRANCH" --depth=1
+            export DIFF=$( git diff --name-only "origin/$DEFAULT_BRANCH" $GITHUB_SHA )
+            echo "Diff between origin/$DEFAULT_BRANCH and $GITHUB_SHA"
           else
-            git fetch origin ${{ github.event.before }} --depth=1
-            export DIFF=$( git diff --name-only ${{ github.event.before }} $GITHUB_SHA )
-            echo "Diff between ${{ github.event.before }} and $GITHUB_SHA"
+            git fetch origin "$EVENT_BEFORE" --depth=1
+            export DIFF=$( git diff --name-only "$EVENT_BEFORE" $GITHUB_SHA )
+            echo "Diff between $EVENT_BEFORE and $GITHUB_SHA"
           fi
         fi
 
@@ -66,11 +72,16 @@ runs:
     - name: Set matrix for build
       id: set-matrix
       shell: bash
+      env:
+        DIFF_FILES: ${{ steps.diff.outputs.diff }}
+        FILTER_FILE: ${{ inputs.filter_file }}
+        IGNORE_DIR: ${{ inputs.ignore_dir }}
+        IGNORE_PATH: ${{ inputs.ignore_path }}
       run: |
         # "****** SET MATRIX FOR BUILD ******"
         shopt -s extglob
 
-        DIFF="${{ steps.diff.outputs.diff }}"
+        DIFF="$DIFF_FILES"
         
         if [[ "$DIFF" ]]; then
           JSON="{\"include\":["
@@ -85,9 +96,9 @@ runs:
             # plus any designated dirs or filepaths
             if [ -z "$rootdir" ]; then
               continue # Exclude root directory
-            elif [[ "$directory" == @(${{ inputs.ignore_dir }}) ]]; then
+            elif [[ "$directory" == @($IGNORE_DIR) ]]; then
               continue
-            elif [[ "$path" == @(${{ inputs.ignore_path }}) ]]; then
+            elif [[ "$path" == @($IGNORE_PATH) ]]; then
               continue
             fi
 
@@ -98,9 +109,9 @@ runs:
             fi
 
             # only include directories containing certain filepaths, e.g. *.tf
-            filecheck=(`find $directory -name ${{ inputs.filter_file }} -maxdepth 1`)
-            if [ ${#filecheck[@]} == 0 ]; then 
-              echo "${directory} has no files matching ${{ inputs.filter_file }}"
+            filecheck=($(find "$directory" -name "$FILTER_FILE" -maxdepth 1))
+            if [ ${#filecheck[@]} == 0 ]; then
+              echo "${directory} has no files matching ${FILTER_FILE}"
               continue
             fi
 
