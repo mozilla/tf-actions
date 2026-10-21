@@ -105,17 +105,15 @@ keep the most recently created comment, then the greatest comment ID. Editing
 a comment does not promote its run. A `FAILED` result supersedes an older
 successful result; starting a new run alone does not hide the old plan.
 
-The helper reads all comment pages before selecting the newest run per stack.
-For each older comment, it fetches that comment and its replacement together,
-checks that both are unchanged and the replacement is visible, then hides the
-older comment if needed. Runs are serialized per PR and always scan
-current comments, so a delayed event or replaced pending workflow cannot make
-its triggering comment the winner. Already minimized comments stay minimized,
-with their existing reason. A hidden newest result pauses cleanup for that
-stack. The helper never automatically unhides comments; if the latest result
-is deleted or manually hidden, a maintainer must restore the desired comment
-before rerunning cleanup. GitHub reads and writes are not atomic; a deletion
-immediately after the final check still needs this manual recovery.
+The helper reads all comment pages, selects the newest run per stack, then
+reads the minimized state of every selected comment in batches of 100 before
+hiding anything. Runs are serialized per PR and always scan current comments,
+so a delayed event or replaced pending workflow cannot make its triggering
+comment the winner. Already minimized comments stay minimized, with their
+existing reason. A hidden or deleted newest result pauses cleanup for that
+stack. The helper never unhides comments. Comments are not re-read between
+that state read and each write, so if the newest result is deleted while a
+run is in progress, a maintainer unhides the comment they want visible.
 
 ## Deployment
 
@@ -134,8 +132,7 @@ comment link, and reason. A dry run also checks `viewerCanMinimize` with the
 actual workflow token. Rerun with `dry_run` disabled to apply the changes.
 API failures fail the job;
 transient HTTP failures are retried by `actions/github-script`. Rerunning is
-safe after a partial failure, including a state-read failure after earlier
-comments were hidden. There is no scheduled sweep: rerun manually to
+safe after a partial failure. There is no scheduled sweep: rerun manually to
 recover a missed event or failed job.
 
 Manual runs also require metadata. Historical comments such as the original

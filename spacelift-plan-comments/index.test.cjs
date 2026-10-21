@@ -42,7 +42,7 @@ function planHistory() {
 
 function mockGitHub(comments) {
   const states = new Map(comments.map(c => [c.node_id, {
-    id: c.node_id, body: c.body, isMinimized: false, viewerCanMinimize: true,
+    id: c.node_id, isMinimized: false, viewerCanMinimize: true,
   }]));
   const api = { states, mutations: [], reads: [], pages: [], beforeRead: () => {} };
   api.rest = {
@@ -201,46 +201,21 @@ test('does not hide anything when the newest result is already minimized', async
   github.states.get('comment-2').isMinimized = true;
   const rows = await execute(github);
   assert.deepEqual(github.mutations, []);
-  assert.ok(rows.some(row => row.action === 'skip' && row.reason.includes('no longer visible')));
+  assert.ok(rows.some(row => row.action === 'skip' && row.reason.includes('leaving this stack')));
 });
 
-test('finishes pagination before selecting a winner and checks each pair before hiding', async () => {
+test('finishes pagination and reads states in batches of 100 before hiding', async () => {
   const comments = Array.from({ length: 101 }, (_, i) => comment(i + 1));
   comments.push(comment(102, NEW_RUN));
   const github = mockGitHub(comments);
-  github.beforeRead = (ids, count) => {
+  github.beforeRead = () => {
     assert.deepEqual(github.pages, [1, 2]);
-    assert.deepEqual(ids, ['comment-102', `comment-${count}`]);
-    assert.equal(github.mutations.length, count - 1);
+    assert.deepEqual(github.mutations, []);
   };
   await execute(github);
-  assert.equal(github.reads.length, 101);
+  assert.deepEqual(github.reads.map(ids => ids.length), [100, 2]);
   assert.equal(github.mutations.length, 101);
   assert.equal(github.states.get('comment-102').isMinimized, false);
-});
-
-for (const change of ['delete', 'edit', 'hide']) {
-  test(`replacement ${change} during cleanup leaves the fallback visible`, async () => {
-    const github = mockGitHub([comment(1), comment(2), comment(3, NEW_RUN)]);
-    github.beforeRead = (ids, count) => {
-      if (count !== 2) return;
-      if (change === 'delete') github.states.delete('comment-3');
-      if (change === 'edit') github.states.get('comment-3').body = 'Changed';
-      if (change === 'hide') github.states.get('comment-3').isMinimized = true;
-    };
-    await execute(github);
-    assert.deepEqual(github.mutations, ['comment-1']);
-    assert.equal(github.states.get('comment-2').isMinimized, false);
-  });
-}
-
-test('a candidate edited during cleanup is not hidden', async () => {
-  const github = mockGitHub([comment(1), comment(2, NEW_RUN)]);
-  github.beforeRead = (ids, count) => {
-    if (count === 1) github.states.get('comment-1').body = 'Changed';
-  };
-  await execute(github);
-  assert.deepEqual(github.mutations, []);
 });
 
 test('permission failure also fails a dry run and makes no mutations', async () => {
@@ -260,7 +235,7 @@ test('rerun completes after a partial API failure without repeating successful w
   assert.deepEqual(github.mutations, ['comment-1', 'comment-2']);
 });
 
-test('failed pagination or an incomplete first state read cannot hide anything', async () => {
+test('failed pagination or an empty state read cannot hide anything', async () => {
   const comments = Array.from({ length: 100 }, (_, i) => comment(i + 1));
   comments.push(comment(101, NEW_RUN));
   const github = mockGitHub(comments);
@@ -274,26 +249,6 @@ test('failed pagination or an incomplete first state read cannot hide anything',
   assert.deepEqual(github.reads, []);
   github.rest.issues.listComments = listComments;
   github.graphql = async () => ({ nodes: [] });
-  await assert.rejects(execute(github), /Incomplete comment state response/);
-  assert.deepEqual(github.mutations, []);
-});
-
-test('rerun completes after a later state read fails without repeating successful writes', async () => {
-  const github = mockGitHub([comment(1), comment(2), comment(3, NEW_RUN)]);
-  github.beforeRead = (ids, count) => {
-    if (count === 2) throw new Error('State read failed');
-  };
-  await assert.rejects(execute(github), /State read failed/);
-  assert.deepEqual(github.mutations, ['comment-1']);
-  assert.equal(github.states.get('comment-2').isMinimized, false);
-  github.beforeRead = () => {};
-  await execute(github);
-  assert.deepEqual(github.mutations, ['comment-1', 'comment-2']);
-});
-
-test('unexpected comment identities in a state response cannot trigger a hide', async () => {
-  const github = mockGitHub([comment(1), comment(2, NEW_RUN)]);
-  github.beforeRead = () => { github.states.get('comment-1').id = 'different-comment'; };
   await execute(github);
   assert.deepEqual(github.mutations, []);
 });
@@ -317,8 +272,7 @@ function workflowContext() {
 }
 
 function mockCore() {
-  return { failures: [], logs: [], info(message) { this.logs.push(message); },
-    setFailed(message) { this.failures.push(message); } };
+  return { logs: [], info(message) { this.logs.push(message); } };
 }
 
 test('step logs show dry-run decisions and actual results with comment links', async () => {
@@ -338,9 +292,8 @@ test('step logs show dry-run decisions and actual results with comment links', a
   assert.ok(core.logs.includes(`hide: "root" ${older.html_url} — Superseded by comment 2.`));
   core.logs.length = 0;
   await invoke('false');
-  assert.ok(core.logs.includes(`skip: "root" ${older.html_url} — Already hidden; preserving existing moderation.`));
+  assert.ok(core.logs.includes(`skip: "root" ${older.html_url} — Already hidden or deleted.`));
   assert.deepEqual(github.mutations, ['comment-1']);
-  assert.deepEqual(core.failures, []);
 });
 
 test('action defaults to dry run and interprets string false explicitly', async () => {
@@ -352,7 +305,6 @@ test('action defaults to dry run and interprets string false explicitly', async 
   }
   await run({ github, context: workflowContext(), core, prNumber: '7799', dryRun: 'false' });
   assert.deepEqual(github.mutations, ['comment-1']);
-  assert.deepEqual(core.failures, []);
 });
 
 test('manual workflow refuses non-default branch execution', async () => {
@@ -406,7 +358,6 @@ test('action uses the caller repository, PR input, and default branch', async ()
   await run({ github, context, core, prNumber: '123', dryRun: 'false' });
   assert.deepEqual(targets, [{ owner: 'mozilla', repo: 'sandbox-infra', pull_number: 123 }]);
   assert.deepEqual(github.mutations, ['comment-1']);
-  assert.deepEqual(core.failures, []);
 });
 
 test('invalid dry-run values cannot enable mutations', async () => {
@@ -421,11 +372,11 @@ test('invalid dry-run values cannot enable mutations', async () => {
 test('manual runs require a PR input and propagate API errors to the job', async () => {
   const github = mockGitHub([comment(1), comment(2, NEW_RUN)]);
   const core = mockCore();
-  await run({ github, context: workflowContext(), core, dryRun: 'false' });
-  assert.match(core.failures[0], /positive integer/);
+  await assert.rejects(run({ github, context: workflowContext(), core, dryRun: 'false' }),
+    /positive integer/);
   github.failMutation = 'comment-1';
-  await run({ github, context: workflowContext(), core, prNumber: '7799', dryRun: 'false' });
-  assert.equal(core.failures[1], 'Temporary API failure');
+  await assert.rejects(run({ github, context: workflowContext(), core, prNumber: '7799', dryRun: 'false' }),
+    /Temporary API failure/);
   assert.deepEqual(github.mutations, []);
 });
 
@@ -453,7 +404,6 @@ test('composite entrypoint loads its bundled helper outside the caller checkout'
     await invoke(createRequire(path.join(directory, 'github-script.cjs')),
       github, workflowContext(), core);
     assert.deepEqual(github.mutations, ['comment-1']);
-    assert.deepEqual(core.failures, []);
   } finally {
     process.chdir(cwd);
     for (const [key, value] of Object.entries(previous)) {

@@ -6,7 +6,7 @@ const RUN_ID = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
 
 const COMMENT_STATES = `query CommentStates($ids: [ID!]!) {
   nodes(ids: $ids) {
-    ... on IssueComment { id body isMinimized viewerCanMinimize }
+    ... on IssueComment { id isMinimized viewerCanMinimize }
   }
 }`;
 const MINIMIZE = `mutation HideOutdatedPlan($id: ID!) {
@@ -60,9 +60,13 @@ function selectPlans(comments) {
   });
 }
 
-function unchanged(plan, state) {
-  return state && state.id === plan.comment.node_id && typeof state.isMinimized === 'boolean' &&
-    state.body === plan.comment.body;
+async function readStates(github, ids) {
+  const states = new Map();
+  for (let start = 0; start < ids.length; start += 100) {
+    const { nodes } = await github.graphql(COMMENT_STATES, { ids: ids.slice(start, start + 100) });
+    for (const node of nodes) if (node?.id) states.set(node.id, node);
+  }
+  return states;
 }
 
 async function reconcile({ github, owner, repo, prNumber, dryRun = true, report = () => {} }) {
@@ -75,38 +79,29 @@ async function reconcile({ github, owner, repo, prNumber, dryRun = true, report 
   const comments = await github.paginate(github.rest.issues.listComments, {
     owner, repo, issue_number: Number(prNumber), per_page: 100,
   });
+  const groups = selectPlans(comments);
+  // REST comments do not expose minimized state; read it once for every selection.
+  const states = await readStates(github, groups.flatMap(({ keeper, older }) =>
+    [keeper, ...older].map(plan => plan.comment.node_id)));
   const record = (plan, action, reason) => report({
     stack: plan.stackId, comment: plan.comment.id,
     url: plan.comment.html_url, action, reason,
   });
 
-  for (const { keeper, older } of selectPlans(comments)) {
+  for (const { keeper, older } of groups) {
+    if (states.get(keeper.comment.node_id)?.isMinimized !== false) {
+      record(keeper, 'skip', 'Newest result is hidden or missing; leaving this stack untouched.');
+      continue;
+    }
     record(keeper, 'keep', 'Newest completed proposed run for this stack.');
     for (const plan of older) {
-      // Refresh both sides immediately before each mutation. Do not remove the
-      // fallback if its replacement was deleted, edited, or manually hidden.
-      const { nodes } = await github.graphql(COMMENT_STATES, {
-        ids: [keeper.comment.node_id, plan.comment.node_id],
-      });
-      if (!Array.isArray(nodes) || nodes.length !== 2) {
-        throw new Error('Incomplete comment state response; refusing to hide comments.');
-      }
-      const [replacement, candidate] = nodes;
-      if (!unchanged(keeper, replacement) || replacement.isMinimized) {
-        record(keeper, 'skip', 'Replacement changed or is no longer visible; stopping this stack.');
-        break;
-      }
-      if (!unchanged(plan, candidate)) {
-        record(plan, 'skip', 'Comment changed or disappeared; rerun cleanup.');
+      const state = states.get(plan.comment.node_id);
+      if (!state || state.isMinimized) {
+        record(plan, 'skip', 'Already hidden or deleted.');
         continue;
       }
-      if (candidate.isMinimized) {
-        record(plan, 'skip', 'Already hidden; preserving existing moderation.');
-        continue;
-      }
-      if (candidate.viewerCanMinimize !== true) {
-        record(plan, 'skip', 'Workflow token cannot minimize this comment.');
-        throw new Error('Cannot minimize comments; check the workflow token pull-requests: write permission.');
+      if (state.viewerCanMinimize !== true) {
+        throw new Error(`Cannot minimize ${plan.comment.html_url}; check the workflow token pull-requests: write permission.`);
       }
       if (dryRun) {
         record(plan, 'would hide', `Superseded by comment ${keeper.comment.id}.`);
@@ -132,21 +127,18 @@ async function run({ github, context, core, prNumber, dryRun = 'true' }) {
   if (context.ref !== `refs/heads/${defaultBranch}`) {
     throw new Error('Cleanup must run from the default branch.');
   }
-  prNumber = prNumber || (!manual ? context.payload.issue.number : undefined);
   if (![true, false, 'true', 'false'].includes(dryRun)) {
     throw new Error('dry-run must be true or false.');
   }
-  dryRun = dryRun === true || dryRun === 'true';
-  try {
-    await reconcile({
-      github, ...context.repo, prNumber, dryRun,
-      report({ action, stack, url, reason }) {
-        core.info(`${action}: ${JSON.stringify(stack)} ${url} — ${reason}`);
-      },
-    });
-  } catch (error) {
-    core.setFailed(error.message);
-  }
+  // Errors propagate: actions/github-script fails the step on a rejected script.
+  await reconcile({
+    github, ...context.repo,
+    prNumber: prNumber || (!manual ? context.payload.issue.number : undefined),
+    dryRun: dryRun === true || dryRun === 'true',
+    report({ action, stack, url, reason }) {
+      core.info(`${action}: ${JSON.stringify(stack)} ${url} — ${reason}`);
+    },
+  });
 }
 
 module.exports = { parsePlan, selectPlans, reconcile, run };
