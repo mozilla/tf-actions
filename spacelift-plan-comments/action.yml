@@ -1,0 +1,37 @@
+name: Hide outdated Spacelift plans
+description: Keep the newest completed proposed-run comment visible for each Mozilla Spacelift stack on a pull request.
+
+inputs:
+  github-token:
+    description: GitHub token with pull-requests write permission in the calling repository.
+    required: false
+    default: ${{ github.token }}
+  pr-number:
+    description: Pull request number. Defaults to the PR from an issue_comment event; required for workflow_dispatch.
+    required: false
+    default: ""
+  dry-run:
+    description: Report decisions without minimizing comments. Set to false to apply changes.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Reconcile Spacelift plan comments
+      uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+      env:
+        SPACELIFT_ACTION_PATH: ${{ github.action_path }}
+        SPACELIFT_PR_NUMBER: ${{ inputs.pr-number }}
+        SPACELIFT_DRY_RUN: ${{ inputs.dry-run }}
+      with:
+        github-token: ${{ inputs.github-token }}
+        retries: 3
+        script: |
+          const path = require('node:path');
+          const { run } = require(path.join(process.env.SPACELIFT_ACTION_PATH, 'index.cjs'));
+          await run({
+            github, context, core,
+            prNumber: process.env.SPACELIFT_PR_NUMBER,
+            dryRun: process.env.SPACELIFT_DRY_RUN,
+          });

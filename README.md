@@ -2,6 +2,13 @@
 
 This repository contains GitHub Actions Composite Actions used for Terraform Automation.
 
+## Spacelift plan comments
+
+The [`mozilla/tf-actions/spacelift-plan-comments`](spacelift-plan-comments/README.md)
+action hides superseded plan comments while keeping the newest completed result
+visible for each stack on a PR. Its documentation includes the caller workflow,
+required permissions, and dry-run rollout instructions for adding it to a repository.
+
 ## Desired CI Workflow
 
 1. Discover each Terraform module or project directory & if it has changed & iterate rest of steps on this;
