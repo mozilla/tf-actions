@@ -8,9 +8,22 @@ The caller workflow listens for comments created or edited by
 `spacelift-io[bot]`. The action verifies the bot's numeric user ID and originating
 GitHub App ID before matching the comments produced by Mozilla's
 [`spacelift_only_pr.rego` notification policy](https://github.com/mozilla/global-platform-admin/blob/main/spacelift/tf/root/policies/notification/spacelift_only_pr.rego).
-It takes the stack ID from the run URL, not the display name. Deploy
-notifications, native Spacelift comments with other formats, and other authors'
-comments are ignored. The account is restricted to `mozilla.app.spacelift.io`.
+The policy must append the version 1 `spacelift-plan` JSON marker. The action
+uses its stack and run IDs; visible wording and links can change freely.
+Only the `mozilla` account, `PROPOSED` runs, and `FINISHED` or `FAILED` states
+are eligible. Comments without metadata are ignored, including historical
+plan comments, deploy notifications, and native Spacelift comments.
+
+The marker occupies the final line of the comment, with optional trailing
+whitespace. For example:
+
+```html
+<!-- spacelift-plan: {"version":1,"account":"mozilla","stack_id":"root","run_id":"01M5DZCFDN5VJ0PXQVY4JPMAMH","type":"PROPOSED","state":"FINISHED","commit_sha":"0123456789abcdef0123456789abcdef01234567"} -->
+```
+
+`commit_sha` is informational; run IDs determine which result is newest.
+Malformed metadata and unsupported versions are ignored. There is no fallback
+that parses the visible comment text.
 
 ## Inputs
 
@@ -92,9 +105,10 @@ keep the most recently created comment, then the greatest comment ID. Editing
 a comment does not promote its run. A `FAILED` result supersedes an older
 successful result; starting a new run alone does not hide the old plan.
 
-The helper reads all comment pages and minimization states before making any
-changes. It checks that the replacement still exists, has the same body, and
-is visible before each mutation. Runs are serialized per PR and always scan
+The helper reads all comment pages before selecting the newest run per stack.
+For each older comment, it fetches that comment and its replacement together,
+checks that both are unchanged and the replacement is visible, then hides the
+older comment if needed. Runs are serialized per PR and always scan
 current comments, so a delayed event or replaced pending workflow cannot make
 its triggering comment the winner. Already minimized comments stay minimized,
 with their existing reason. A hidden newest result pauses cleanup for that
@@ -103,26 +117,30 @@ is deleted or manually hidden, a maintainer must restore the desired comment
 before rerunning cleanup. GitHub reads and writes are not atomic; a deletion
 immediately after the final check still needs this manual recovery.
 
-## Deployment and backfill
+## Deployment
 
-Merge and publish this action in `mozilla/tf-actions` first. Then pin each
-caller to the resulting full commit SHA and merge the caller into its
-repository's default branch to activate comment events. No Spacelift policy
-deployment, PAT, or Spacelift API credential is required. Pin upgrades can be
-managed by Dependabot's `github-actions` ecosystem in consuming repositories.
+Deploy the notification-policy metadata change from g-p-a's
+`MZCLD-4481-metadata` branch first. Then publish this action in
+`mozilla/tf-actions`, pin each caller to the resulting full commit SHA, and
+merge the caller into its repository's default branch to activate comment
+events. Existing callers must update their pin to use this implementation.
+No PAT or Spacelift API credential is required. Pin upgrades can be managed
+by Dependabot's `github-actions` ecosystem in consuming repositories.
 
 In Actions, choose **Hide outdated Spacelift plans**, then **Run workflow** on
 the default branch. Enter a PR number and leave `dry_run` enabled first. The
-job summary links the selected comments and reports the exact decisions. A
-dry run also checks `viewerCanMinimize` with the actual workflow token. Rerun
-with `dry_run` disabled to apply the changes. API failures fail the job;
+step log prints `keep`, `would hide`, `hide`, or `skip` with the stack ID,
+comment link, and reason. A dry run also checks `viewerCanMinimize` with the
+actual workflow token. Rerun with `dry_run` disabled to apply the changes.
+API failures fail the job;
 transient HTTP failures are retried by `actions/github-script`. Rerunning is
-safe after a partial failure. There is no scheduled sweep: rerun manually to
+safe after a partial failure, including a state-read failure after earlier
+comments were hidden. There is no scheduled sweep: rerun manually to
 recover a missed event or failed job.
 
-For PR 7799, the initial acceptance case keeps comment `6305338609`, leaves
-`6303760140` hidden, and minimizes `6304094455`, `6304380444`, `6304604691`,
-`6304779045`, and `6305177539`.
+Manual runs also require metadata. Historical comments such as the original
+results on PR 7799 are left untouched; this implementation only cleans up
+comments emitted after the metadata policy is deployed.
 
 ## Local tests
 

@@ -12,19 +12,23 @@ const OLD_RUN = '01M5DRTNYWWAMP9VKHR5GR6SSW';
 const NEW_RUN = '01M5DZCFDN5VJ0PXQVY4JPMAMH';
 
 function comment(id, runId = OLD_RUN, stack = 'root', state = 'FINISHED') {
+  const metadata = {
+    version: 1, account: 'mozilla', stack_id: stack, run_id: runId,
+    type: 'PROPOSED', state, commit_sha: '0123456789abcdef0123456789abcdef01234567',
+  };
   return {
     id, node_id: `comment-${id}`,
     user: { id: 57898261, login: 'spacelift-io[bot]', type: 'Bot' },
     performed_via_github_app: { id: 47046 },
     created_at: '2026-10-20T23:04:55Z',
     html_url: `https://github.com/mozilla/global-platform-admin/pull/7799#issuecomment-${id}`,
-    body: `Run for Spacelift-only stack \`display name\` has ${state} : [view run](https://mozilla.app.spacelift.io/stack/${stack}/run/${runId})\n\nPlan summary`,
+    body: `Plan summary\n\n<!-- spacelift-plan: ${JSON.stringify(metadata)} -->`,
   };
 }
 
-// Recorded comment/run identities from PR 7799; plan bodies are intentionally
-// reduced to the header that this workflow owns.
-function pr7799() {
+// Replay the run order from PR 7799 using the new metadata contract. The actual
+// historical comments predate metadata and are no longer selected by this action.
+function planHistory() {
   return [
     [6303760140, OLD_RUN],
     [6304094455, '01M5DT3BC5GKJ0SWYHMKKTHGMB'],
@@ -79,8 +83,8 @@ async function execute(github, dryRun = false) {
   return rows;
 }
 
-test('PR 7799 hides exactly five remaining old comments and is idempotent', async () => {
-  const github = mockGitHub(pr7799());
+test('metadata-tagged history hides five remaining old comments and is idempotent', async () => {
+  const github = mockGitHub(planHistory());
   github.states.get('comment-6303760140').isMinimized = true;
   const rows = await execute(github);
   assert.deepEqual(github.mutations, [6304094455, 6304380444, 6304604691, 6304779045, 6305177539]
@@ -93,7 +97,7 @@ test('PR 7799 hides exactly five remaining old comments and is idempotent', asyn
 });
 
 test('dry run reports the same changes without any mutations', async () => {
-  const github = mockGitHub(pr7799());
+  const github = mockGitHub(planHistory());
   github.states.get('comment-6303760140').isMinimized = true;
   const rows = await execute(github, true);
   assert.equal(rows.filter(r => r.action === 'would hide').length, 5);
@@ -108,11 +112,11 @@ test('late arrival and edits cannot promote an older run', () => {
   assert.equal(selectPlans([newest, old])[0].keeper.comment.id, 2);
 });
 
-test('groups by stack ID even when display names are identical', async () => {
+test('groups by metadata stack ID even when visible summaries are identical', async () => {
   const github = mockGitHub([
     comment(1), comment(2, NEW_RUN),
     comment(3, OLD_RUN, 'admin-aws-sso/cloudservices'),
-    comment(4, NEW_RUN, 'admin-aws-sso%2Fcloudservices'),
+    comment(4, NEW_RUN, 'admin-aws-sso/cloudservices'),
   ]);
   await execute(github);
   assert.deepEqual(github.mutations, ['comment-1', 'comment-3']);
@@ -138,24 +142,58 @@ test('duplicate run results choose creation time then numeric comment ID', () =>
   assert.equal(selectPlans([last, first, edited])[0].keeper.comment.id, 10);
 });
 
-test('rejects other authors, apps, hosts, malformed IDs, and deploy notifications', () => {
+test('rejects other authors and apps even with valid metadata', () => {
   const original = comment(1);
   const invalid = [
     { ...original, user: { ...original.user, id: 123 } },
     { ...original, user: { ...original.user, type: 'User' } },
     { ...original, performed_via_github_app: { id: 123 } },
     { ...original, performed_via_github_app: null },
-    { ...original, body: original.body.replace('mozilla.app.spacelift.io', 'mozilla.app.spacelift.io.evil.test') },
-    { ...original, body: original.body.replace('mozilla.app.spacelift.io', 'user@mozilla.app.spacelift.io') },
-    { ...original, body: original.body.replace(OLD_RUN, 'not-a-run') },
-    { ...original, body: original.body.replace(OLD_RUN, '81M5DRTNYWWAMP9VKHR5GR6SSW') },
-    { ...original, body: original.body.replace('/stack/root/', '/stack/%ZZ/') },
-    { ...original, body: ':heavy_check_mark: **Deploy succeeded** for stack `root`' },
-    { ...original, body: `A quoted plan:\n${original.body}` },
   ];
   for (const c of invalid) assert.equal(parsePlan(c), null);
   assert.equal(parsePlan(original).stackId, 'root');
-  assert.equal(parsePlan({ ...original, body: original.body.replaceAll('\n', '\r\n') }).runId, OLD_RUN);
+});
+
+test('metadata is independent of visible text and supports policy JSON escapes', () => {
+  // Same encoding as the Rego policy, including escaped paired hyphens.
+  const body = `Completely different wording, without a run link.\r\n\r\n<!-- spacelift-plan: {"account":"mozilla","commit_sha":"0123456789abcdef0123456789abcdef01234567","run_id":"${OLD_RUN}","stack_id":"example\\u002d\\u002dstack/child","state":"FINISHED","type":"PROPOSED","version":1} -->\r\n`;
+  const parsed = parsePlan({ ...comment(1), body });
+  assert.equal(parsed.stackId, 'example--stack/child');
+  assert.equal(parsed.runId, OLD_RUN);
+  assert.equal(parsed.state, 'FINISHED');
+});
+
+test('ignores missing, malformed, unsupported, or ineligible metadata', () => {
+  const original = comment(1);
+  const valid = JSON.parse(original.body.match(/<!-- spacelift-plan: (.+) -->/)[1]);
+  const invalid = [
+    null, [], 'text', {},
+    ...[
+      { version: 2 }, { version: '1' }, { account: 'another-account' },
+      { type: 'TRACKED' }, { state: 'PLANNING' },
+      { stack_id: '' }, { stack_id: 123 }, { stack_id: null },
+      { run_id: 'not-a-run' }, { run_id: '81M5DRTNYWWAMP9VKHR5GR6SSW' },
+      { run_id: [OLD_RUN] }, { run_id: null },
+    ].map(patch => ({ ...valid, ...patch })),
+  ];
+  for (const metadata of invalid) {
+    assert.equal(parsePlan({ ...original, body: `<!-- spacelift-plan: ${JSON.stringify(metadata)} -->` }), null);
+  }
+  for (const body of [
+    null, '', '<!-- spacelift-plan: broken JSON -->',
+    original.body + '\nText after the marker',
+    original.body.replace('<!-- spacelift-plan:', '> <!-- spacelift-plan:'),
+    ':heavy_check_mark: **Deploy succeeded** for stack `root`',
+  ]) assert.equal(parsePlan({ ...original, body }), null);
+});
+
+test('historical comments without metadata remain untouched', async () => {
+  const legacy = comment(1);
+  legacy.body = `Run for Spacelift-only stack \`root\` has FINISHED : [view run](https://mozilla.app.spacelift.io/stack/root/run/${OLD_RUN})`;
+  const github = mockGitHub([legacy, comment(2), comment(3, NEW_RUN)]);
+  await execute(github);
+  assert.deepEqual(github.mutations, ['comment-2']);
+  assert.equal(github.states.get(legacy.node_id).isMinimized, false);
 });
 
 test('does not hide anything when the newest result is already minimized', async () => {
@@ -163,42 +201,43 @@ test('does not hide anything when the newest result is already minimized', async
   github.states.get('comment-2').isMinimized = true;
   const rows = await execute(github);
   assert.deepEqual(github.mutations, []);
-  assert.equal(rows[0].action, 'skipped');
+  assert.ok(rows.some(row => row.action === 'skip' && row.reason.includes('no longer visible')));
 });
 
-test('reads past 100 comments and all state batches before hiding anything', async () => {
+test('finishes pagination before selecting a winner and checks each pair before hiding', async () => {
   const comments = Array.from({ length: 101 }, (_, i) => comment(i + 1));
   comments.push(comment(102, NEW_RUN));
   const github = mockGitHub(comments);
   github.beforeRead = (ids, count) => {
-    if (count <= 2) assert.deepEqual(github.mutations, []);
+    assert.deepEqual(github.pages, [1, 2]);
+    assert.deepEqual(ids, ['comment-102', `comment-${count}`]);
+    assert.equal(github.mutations.length, count - 1);
   };
   await execute(github);
-  assert.deepEqual(github.pages, [1, 2]);
-  assert.equal(github.reads[0].length, 100);
-  assert.equal(github.reads[1].length, 2);
+  assert.equal(github.reads.length, 101);
   assert.equal(github.mutations.length, 101);
   assert.equal(github.states.get('comment-102').isMinimized, false);
 });
 
 for (const change of ['delete', 'edit', 'hide']) {
   test(`replacement ${change} during cleanup leaves the fallback visible`, async () => {
-    const github = mockGitHub([comment(1), comment(2, NEW_RUN)]);
+    const github = mockGitHub([comment(1), comment(2), comment(3, NEW_RUN)]);
     github.beforeRead = (ids, count) => {
       if (count !== 2) return;
-      if (change === 'delete') github.states.delete('comment-2');
-      if (change === 'edit') github.states.get('comment-2').body = 'Changed';
-      if (change === 'hide') github.states.get('comment-2').isMinimized = true;
+      if (change === 'delete') github.states.delete('comment-3');
+      if (change === 'edit') github.states.get('comment-3').body = 'Changed';
+      if (change === 'hide') github.states.get('comment-3').isMinimized = true;
     };
     await execute(github);
-    assert.deepEqual(github.mutations, []);
+    assert.deepEqual(github.mutations, ['comment-1']);
+    assert.equal(github.states.get('comment-2').isMinimized, false);
   });
 }
 
 test('a candidate edited during cleanup is not hidden', async () => {
   const github = mockGitHub([comment(1), comment(2, NEW_RUN)]);
   github.beforeRead = (ids, count) => {
-    if (count === 2) github.states.get('comment-1').body = 'Changed';
+    if (count === 1) github.states.get('comment-1').body = 'Changed';
   };
   await execute(github);
   assert.deepEqual(github.mutations, []);
@@ -221,15 +260,41 @@ test('rerun completes after a partial API failure without repeating successful w
   assert.deepEqual(github.mutations, ['comment-1', 'comment-2']);
 });
 
-test('failed pagination or state loading cannot produce a partial selection', async () => {
-  const github = mockGitHub([comment(1), comment(2, NEW_RUN)]);
-  const paginate = github.paginate;
-  github.paginate = async () => { throw new Error('Pagination failed'); };
+test('failed pagination or an incomplete first state read cannot hide anything', async () => {
+  const comments = Array.from({ length: 100 }, (_, i) => comment(i + 1));
+  comments.push(comment(101, NEW_RUN));
+  const github = mockGitHub(comments);
+  const listComments = github.rest.issues.listComments;
+  github.rest.issues.listComments = async parameters => {
+    if (parameters.page === 2) throw new Error('Pagination failed');
+    return listComments(parameters);
+  };
   await assert.rejects(execute(github), /Pagination failed/);
   assert.deepEqual(github.mutations, []);
-  github.paginate = paginate;
+  assert.deepEqual(github.reads, []);
+  github.rest.issues.listComments = listComments;
   github.graphql = async () => ({ nodes: [] });
   await assert.rejects(execute(github), /Incomplete comment state response/);
+  assert.deepEqual(github.mutations, []);
+});
+
+test('rerun completes after a later state read fails without repeating successful writes', async () => {
+  const github = mockGitHub([comment(1), comment(2), comment(3, NEW_RUN)]);
+  github.beforeRead = (ids, count) => {
+    if (count === 2) throw new Error('State read failed');
+  };
+  await assert.rejects(execute(github), /State read failed/);
+  assert.deepEqual(github.mutations, ['comment-1']);
+  assert.equal(github.states.get('comment-2').isMinimized, false);
+  github.beforeRead = () => {};
+  await execute(github);
+  assert.deepEqual(github.mutations, ['comment-1', 'comment-2']);
+});
+
+test('unexpected comment identities in a state response cannot trigger a hide', async () => {
+  const github = mockGitHub([comment(1), comment(2, NEW_RUN)]);
+  github.beforeRead = () => { github.states.get('comment-1').id = 'different-comment'; };
+  await execute(github);
   assert.deepEqual(github.mutations, []);
 });
 
@@ -252,11 +317,31 @@ function workflowContext() {
 }
 
 function mockCore() {
-  const core = { failures: [], info() {}, warning() {}, setFailed(message) { this.failures.push(message); } };
-  core.summary = { addHeading() { return this; }, addTable() { return this; },
-    addRaw() { return this; }, async write() {} };
-  return core;
+  return { failures: [], logs: [], info(message) { this.logs.push(message); },
+    setFailed(message) { this.failures.push(message); } };
 }
+
+test('step logs show dry-run decisions and actual results with comment links', async () => {
+  const older = comment(1);
+  const keeper = comment(2, NEW_RUN);
+  const github = mockGitHub([older, keeper]);
+  const core = mockCore();
+  const invoke = dryRun => run({ github, context: workflowContext(), core, prNumber: '7799', dryRun });
+  await invoke('true');
+  assert.deepEqual(core.logs, [
+    `keep: "root" ${keeper.html_url} — Newest completed proposed run for this stack.`,
+    `would hide: "root" ${older.html_url} — Superseded by comment 2.`,
+  ]);
+  assert.deepEqual(github.mutations, []);
+  core.logs.length = 0;
+  await invoke('false');
+  assert.ok(core.logs.includes(`hide: "root" ${older.html_url} — Superseded by comment 2.`));
+  core.logs.length = 0;
+  await invoke('false');
+  assert.ok(core.logs.includes(`skip: "root" ${older.html_url} — Already hidden; preserving existing moderation.`));
+  assert.deepEqual(github.mutations, ['comment-1']);
+  assert.deepEqual(core.failures, []);
+});
 
 test('action defaults to dry run and interprets string false explicitly', async () => {
   const github = mockGitHub([comment(1), comment(2, NEW_RUN)]);

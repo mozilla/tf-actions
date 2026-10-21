@@ -2,9 +2,7 @@
 
 const BOT_ID = 57898261;
 const APP_ID = 47046;
-const ORIGIN = 'https://mozilla.app.spacelift.io';
-const HEADER = /^Run for Spacelift-only stack `[^`]+` has (FINISHED|FAILED) : \[view run\]\((https:\/\/[^\s)]+)\)$/;
-const RUN_PATH = /^\/stack\/(.+)\/run\/([0-7][0-9A-HJKMNP-TV-Z]{25})$/;
+const RUN_ID = /^[0-7][0-9A-HJKMNP-TV-Z]{25}$/;
 
 const COMMENT_STATES = `query CommentStates($ids: [ID!]!) {
   nodes(ids: $ids) {
@@ -17,22 +15,20 @@ const MINIMIZE = `mutation HideOutdatedPlan($id: ID!) {
   }
 }`;
 
-// Only the custom proposed-run notification policy is in scope. In particular,
-// deployment notifications and human comments quoting a plan must not match.
+// The notification policy appends a versioned JSON marker. Visible wording
+// and links are not part of the contract; comments without metadata are ignored.
 function parsePlan(comment) {
   if (comment.user?.id !== BOT_ID || comment.user?.type !== 'Bot' ||
       comment.performed_via_github_app?.id !== APP_ID) return null;
-  const header = (comment.body || '').split(/\r?\n/, 1)[0];
-  const match = HEADER.exec(header);
+  const match = /(?:^|\n)<!-- spacelift-plan: (.+) -->\s*$/.exec(comment.body || '');
   if (!match) return null;
   try {
-    const url = new URL(match[2]);
-    const path = RUN_PATH.exec(url.pathname);
-    if (url.origin !== ORIGIN || url.username || url.password ||
-        url.search || url.hash || !path) return null;
-    const stackId = decodeURIComponent(path[1]);
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9_./-]*$/.test(stackId)) return null;
-    return { comment, stackId, runId: path[2], state: match[1] };
+    const metadata = JSON.parse(match[1]);
+    if (metadata?.version !== 1 || metadata.account !== 'mozilla' ||
+        metadata.type !== 'PROPOSED' || !['FINISHED', 'FAILED'].includes(metadata.state) ||
+        typeof metadata.stack_id !== 'string' || !metadata.stack_id ||
+        typeof metadata.run_id !== 'string' || !RUN_ID.test(metadata.run_id)) return null;
+    return { comment, stackId: metadata.stack_id, runId: metadata.run_id, state: metadata.state };
   } catch {
     return null;
   }
@@ -64,23 +60,8 @@ function selectPlans(comments) {
   });
 }
 
-async function readStates(github, ids) {
-  const states = new Map();
-  for (let start = 0; start < ids.length; start += 100) {
-    const batch = ids.slice(start, start + 100);
-    const { nodes } = await github.graphql(COMMENT_STATES, { ids: batch });
-    if (!Array.isArray(nodes) || nodes.length !== batch.length) {
-      throw new Error('Incomplete comment state response; refusing to hide comments.');
-    }
-    for (const node of nodes) {
-      if (node?.id) states.set(node.id, node);
-    }
-  }
-  return states;
-}
-
 function unchanged(plan, state) {
-  return state && typeof state.isMinimized === 'boolean' &&
+  return state && state.id === plan.comment.node_id && typeof state.isMinimized === 'boolean' &&
     state.body === plan.comment.body;
 }
 
@@ -90,54 +71,41 @@ async function reconcile({ github, owner, repo, prNumber, dryRun = true, report 
   }
   // Unlike the issue-comment endpoint, this rejects ordinary issue numbers.
   await github.rest.pulls.get({ owner, repo, pull_number: Number(prNumber) });
+  // Finish pagination before choosing the newest run for each stack.
   const comments = await github.paginate(github.rest.issues.listComments, {
     owner, repo, issue_number: Number(prNumber), per_page: 100,
   });
-  const groups = selectPlans(comments);
-  // Read every page and all candidate states before performing any mutations.
-  const states = await readStates(github, groups.flatMap(({ keeper, older }) =>
-    [keeper, ...older].map(({ comment }) => comment.node_id)));
-
   const record = (plan, action, reason) => report({
     stack: plan.stackId, comment: plan.comment.id,
     url: plan.comment.html_url, action, reason,
   });
 
-  for (const { keeper, older } of groups) {
-    const all = [keeper, ...older];
-    if (all.some(plan => !unchanged(plan, states.get(plan.comment.node_id)))) {
-      record(keeper, 'skipped', 'Comment changed or disappeared during the scan; rerun cleanup.');
-      continue;
-    }
-    if (states.get(keeper.comment.node_id).isMinimized) {
-      record(keeper, 'skipped', 'Newest result is hidden; leaving this stack untouched.');
-      continue;
-    }
+  for (const { keeper, older } of selectPlans(comments)) {
     record(keeper, 'keep', 'Newest completed proposed run for this stack.');
     for (const plan of older) {
-      if (states.get(plan.comment.node_id).isMinimized) {
-        record(plan, 'already hidden', 'Preserving existing moderation.');
-        continue;
-      }
       // Refresh both sides immediately before each mutation. Do not remove the
       // fallback if its replacement was deleted, edited, or manually hidden.
-      const current = await readStates(github, [keeper.comment.node_id, plan.comment.node_id]);
-      const replacement = current.get(keeper.comment.node_id);
-      const candidate = current.get(plan.comment.node_id);
+      const { nodes } = await github.graphql(COMMENT_STATES, {
+        ids: [keeper.comment.node_id, plan.comment.node_id],
+      });
+      if (!Array.isArray(nodes) || nodes.length !== 2) {
+        throw new Error('Incomplete comment state response; refusing to hide comments.');
+      }
+      const [replacement, candidate] = nodes;
       if (!unchanged(keeper, replacement) || replacement.isMinimized) {
-        record(keeper, 'skipped', 'Replacement changed or is no longer visible; stopping this stack.');
+        record(keeper, 'skip', 'Replacement changed or is no longer visible; stopping this stack.');
         break;
       }
       if (!unchanged(plan, candidate)) {
-        record(plan, 'skipped', 'Comment changed or disappeared; rerun cleanup.');
+        record(plan, 'skip', 'Comment changed or disappeared; rerun cleanup.');
         continue;
       }
       if (candidate.isMinimized) {
-        record(plan, 'already hidden', 'Preserving existing moderation.');
+        record(plan, 'skip', 'Already hidden; preserving existing moderation.');
         continue;
       }
       if (candidate.viewerCanMinimize !== true) {
-        record(plan, 'blocked', 'Workflow token cannot minimize this comment.');
+        record(plan, 'skip', 'Workflow token cannot minimize this comment.');
         throw new Error('Cannot minimize comments; check the workflow token pull-requests: write permission.');
       }
       if (dryRun) {
@@ -148,15 +116,9 @@ async function reconcile({ github, owner, repo, prNumber, dryRun = true, report 
       if (result.minimizeComment?.minimizedComment?.isMinimized !== true) {
         throw new Error(`GitHub did not confirm minimization of comment ${plan.comment.id}.`);
       }
-      record(plan, 'hidden', `Superseded by comment ${keeper.comment.id}.`);
+      record(plan, 'hide', `Superseded by comment ${keeper.comment.id}.`);
     }
   }
-}
-
-function escapeHtml(value) {
-  return String(value).replace(/[&<>"']/g, char => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  })[char]);
 }
 
 // Action inputs are explicit so callers can name their workflow_dispatch inputs
@@ -175,31 +137,15 @@ async function run({ github, context, core, prNumber, dryRun = 'true' }) {
     throw new Error('dry-run must be true or false.');
   }
   dryRun = dryRun === true || dryRun === 'true';
-  const rows = [];
   try {
     await reconcile({
       github, ...context.repo, prNumber, dryRun,
-      report(row) {
-        rows.push(row);
-        core.info(JSON.stringify(row));
-        if (row.action === 'skipped' || row.action === 'blocked') core.warning(row.reason);
+      report({ action, stack, url, reason }) {
+        core.info(`${action}: ${JSON.stringify(stack)} ${url} — ${reason}`);
       },
     });
   } catch (error) {
     core.setFailed(error.message);
-  } finally {
-    core.summary.addHeading(`Spacelift plan comments${dryRun ? ' (dry run)' : ''}`);
-    if (rows.length) {
-      core.summary.addTable([
-        ['Stack', 'Comment', 'Action', 'Reason'],
-        ...rows.map(row => [escapeHtml(row.stack),
-          `<a href="${escapeHtml(row.url)}">${row.comment}</a>`,
-          escapeHtml(row.action), escapeHtml(row.reason)]),
-      ]);
-    } else {
-      core.summary.addRaw('No comment changes were selected. See the job log for any errors.');
-    }
-    await core.summary.write();
   }
 }
 
