@@ -25,6 +25,31 @@ whitespace. For example:
 Malformed metadata and unsupported versions are ignored. There is no fallback
 that parses the visible comment text.
 
+## Run locally with gh
+
+The local runner works before the Action or metadata policy is deployed. It
+uses Node.js 22+ and your existing `gh auth login` session; no npm install is
+needed. Unlike the Action, it also recognizes the existing Mozilla Spacelift
+plan headers so it can clean up comments posted before metadata was added.
+Bot/App checks and newest-run selection are shared with the Action.
+
+From this repository, preview a PR:
+
+```sh
+node spacelift-plan-comments/cli.cjs https://github.com/mozilla/global-platform-admin/pull/7867
+```
+
+Then apply the cleanup:
+
+```sh
+node spacelift-plan-comments/cli.cjs https://github.com/mozilla/global-platform-admin/pull/7867 --apply
+```
+
+The preview checks whether your account can minimize the selected comments.
+`--apply` reads the PR again and hides superseded comments using `OUTDATED`.
+Already hidden comments are left alone. Run one cleanup at a time per PR;
+the CLI does not have the workflow's concurrency lock.
+
 ## Inputs
 
 | Input | Default | Description |
@@ -135,7 +160,7 @@ transient HTTP failures are retried by `actions/github-script`. Rerunning is
 safe after a partial failure. There is no scheduled sweep: rerun manually to
 recover a missed event or failed job.
 
-Manual runs also require metadata. Historical comments such as the original
+Manual workflow runs also require metadata. Historical comments such as the original
 results on PR 7799 are left untouched; this implementation only cleans up
 comments emitted after the metadata policy is deployed.
 

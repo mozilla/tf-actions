@@ -7,9 +7,82 @@ const { createRequire } = require('node:module');
 const { tmpdir } = require('node:os');
 const path = require('node:path');
 const { parsePlan, selectPlans, reconcile, run } = require('./index.cjs');
+const { parseManualPlan, githubViaGh, parseOptions, main } = require('./cli.cjs');
 
 const OLD_RUN = '01M5DRTNYWWAMP9VKHR5GR6SSW';
 const NEW_RUN = '01M5DZCFDN5VJ0PXQVY4JPMAMH';
+
+function legacyComment(id, runId = OLD_RUN, stack = 'root') {
+  return { ...comment(id, runId, stack),
+    body: `Run for Spacelift-only stack \`display name\` has FINISHED : [view run](https://mozilla.app.spacelift.io/stack/${stack}/run/${runId})\n\nPlan summary` };
+}
+
+test('manual runner supports legacy and metadata comments without changing the Action default', () => {
+  const legacy = legacyComment(1, OLD_RUN, 'admin-aws-sso%2Fcloudservices');
+  assert.equal(parseManualPlan(legacy).stackId, 'admin-aws-sso/cloudservices');
+  assert.equal(parseManualPlan(comment(2, NEW_RUN)).runId, NEW_RUN);
+  assert.deepEqual(selectPlans([legacy]), []);
+  assert.equal(selectPlans([legacy], parseManualPlan)[0].keeper.comment.id, 1);
+  for (const invalid of [
+    { ...legacy, user: { id: 123, type: 'Bot' } },
+    { ...legacy, performed_via_github_app: { id: 123 } },
+    { ...legacy, body: legacy.body.replace('mozilla.app.spacelift.io', 'mozilla.app.spacelift.io.evil.test') },
+    { ...legacy, body: legacy.body.replace(OLD_RUN, 'not-a-run') },
+    { ...legacy, body: legacy.body.replace('admin-aws-sso%2Fcloudservices', '%ZZ') },
+    { ...legacy, body: legacy.body.replace('FINISHED', 'PLANNING') },
+    { ...legacy, body: `${legacy.body}\n\n<!-- spacelift-plan: {"version":2} -->` },
+  ]) assert.equal(parseManualPlan(invalid), null);
+});
+
+test('CLI requires an explicit apply flag and validates the target before calling gh', async () => {
+  const url = 'https://github.com/mozilla/global-platform-admin/pull/7867';
+  assert.equal(parseOptions([url]).apply, false);
+  assert.equal(parseOptions([url, '--apply']).apply, true);
+  for (const args of [[], [url, 'extra'], [url, '--aply'], [url.replace('/pull/', '/issues/')],
+    [url.replace('github.com', 'example.com')], [url.replace('github.com', 'user@github.com')]]) {
+    await assert.rejects(main(args, () => assert.fail('Invalid input reached gh'), () => {}));
+  }
+  await assert.rejects(githubViaGh(false, () => assert.fail('Mutation reached gh'))
+    .graphql('mutation Hide($id: ID!) {}', { id: 'comment-1' }), /require --apply/);
+});
+
+test('CLI previews paginated comments, applies only with the flag, and is idempotent', async () => {
+  const comments = [legacyComment(1), comment(2), legacyComment(3, NEW_RUN)];
+  const github = mockGitHub(comments);
+  const requests = [];
+  const api = async args => {
+    requests.push(args);
+    if (args[0] === 'graphql') {
+      const fields = {};
+      for (let index = 2; index < args.length; index += 2) {
+        const separator = args[index].indexOf('=');
+        const key = args[index].slice(0, separator);
+        const value = args[index].slice(separator + 1);
+        if (key.endsWith('[]')) (fields[key.slice(0, -2)] ||= []).push(value);
+        else fields[key] = value;
+      }
+      const { query, ...variables } = fields;
+      return { data: await github.graphql(query, variables) };
+    }
+    if (args[0].includes('/comments?')) {
+      assert.ok(args.includes('--paginate'));
+      assert.ok(args.includes('--slurp'));
+      return [comments.slice(0, 1), comments.slice(1)];
+    }
+    assert.equal(args[0], 'repos/mozilla/global-platform-admin/pulls/7867');
+    return { number: 7867 };
+  };
+  const url = 'https://github.com/mozilla/global-platform-admin/pull/7867';
+  const logs = [];
+  await main([url], api, line => logs.push(line));
+  assert.deepEqual(github.mutations, []);
+  assert.equal(logs.filter(line => line.startsWith('would hide: "root"')).length, 2);
+  await main([url, '--apply'], api, () => {});
+  assert.deepEqual(github.mutations, ['comment-1', 'comment-2']);
+  await main([url, '--apply'], api, () => {});
+  assert.deepEqual(github.mutations, ['comment-1', 'comment-2']);
+  assert.equal(requests.filter(args => args[0].endsWith('/pulls/7867')).length, 3);
+});
 
 function comment(id, runId = OLD_RUN, stack = 'root', state = 'FINISHED') {
   const metadata = {

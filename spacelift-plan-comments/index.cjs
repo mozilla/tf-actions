@@ -45,10 +45,10 @@ function compare(a, b) {
   return a.comment.id - b.comment.id;
 }
 
-function selectPlans(comments) {
+function selectPlans(comments, parseComment = parsePlan) {
   const groups = new Map();
   for (const comment of comments) {
-    const plan = parsePlan(comment);
+    const plan = parseComment(comment);
     if (!plan) continue;
     const group = groups.get(plan.stackId) || [];
     group.push(plan);
@@ -69,7 +69,7 @@ async function readStates(github, ids) {
   return states;
 }
 
-async function reconcile({ github, owner, repo, prNumber, dryRun = true, report = () => {} }) {
+async function reconcile({ github, owner, repo, prNumber, dryRun = true, report = () => {}, parseComment = parsePlan }) {
   if (!/^[1-9][0-9]*$/.test(String(prNumber)) || !Number.isSafeInteger(Number(prNumber))) {
     throw new Error('pr_number must be a positive integer.');
   }
@@ -79,7 +79,7 @@ async function reconcile({ github, owner, repo, prNumber, dryRun = true, report 
   const comments = await github.paginate(github.rest.issues.listComments, {
     owner, repo, issue_number: Number(prNumber), per_page: 100,
   });
-  const groups = selectPlans(comments);
+  const groups = selectPlans(comments, parseComment);
   // REST comments do not expose minimized state; read it once for every selection.
   const states = await readStates(github, groups.flatMap(({ keeper, older }) =>
     [keeper, ...older].map(plan => plan.comment.node_id)));
