@@ -69,7 +69,7 @@ jobs:
 
     steps:
       - name: Install Opentofu
-        uses: opentofu/setup-opentofu@fc711fa910b93cba0f3fbecaafc9f42fd0c411cb #v2.0.0
+        uses: opentofu/setup-opentofu@v2.0.0
         with:
           cache: true
           tofu_wrapper: false
