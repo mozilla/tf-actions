@@ -43,4 +43,4 @@ jobs:
     permissions:
       contents: read
       actions: read
-    uses: mozilla/ssdlc-actions/.github/workflows/code-security-analysis-private-repo.yml@aa759c845c83060e2473fd8df60f9f408e34675d # v1.2
+    uses: mozilla/ssdlc-actions/.github/workflows/code-security-analysis-private-repo.yml@fefef2fcb29fdf47eaf1fc7417d50adc0cd1b717
