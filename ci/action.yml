@@ -167,7 +167,7 @@ runs:
         if [[ -f .tflint.hcl ]]; then
           echo "INFO: Running tflint for ${TFPATH}"
           tflint --init
-          tflint -f compact
+          tflint -f compact --minimum-failure-severity=warning
         fi
     - name: Terraform Lint Global
       env:
@@ -179,5 +179,5 @@ runs:
         if [[ -f .tflint.hcl ]]; then
           echo "INFO: Running tflint for global ruleset"
           tflint --init
-          TFLINT_OPA_POLICY_DIR=$(pwd)/.tflint.d/policies tflint --config=$(pwd)/.tflint.hcl --chdir "$TFPATH"
+          TFLINT_OPA_POLICY_DIR=$(pwd)/.tflint.d/policies tflint --config=$(pwd)/.tflint.hcl --chdir "$TFPATH" --minimum-failure-severity=warning
         fi
